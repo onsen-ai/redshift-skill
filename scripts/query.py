@@ -13,12 +13,27 @@ from lib.formatter import format_output, format_duration
 def main():
     parser = argparse.ArgumentParser(description="Run a read-only SQL query against Redshift")
     add_connection_args(parser)
-    parser.add_argument("sql", help="SQL query to execute")
+    parser.add_argument("sql", nargs="?", help="SQL query to execute")
+    parser.add_argument("--sql-file", dest="sql_file",
+                        help="Read SQL from a file instead of command line")
     args = parser.parse_args()
+
+    # Resolve SQL from either positional arg or --sql-file
+    if args.sql_file:
+        sql_path = Path(args.sql_file)
+        if not sql_path.exists():
+            print(f"ERROR: SQL file not found: {args.sql_file}", file=sys.stderr)
+            sys.exit(1)
+        sql = sql_path.read_text().strip()
+    elif args.sql:
+        sql = args.sql
+    else:
+        print("ERROR: Provide SQL as an argument or use --sql-file=PATH", file=sys.stderr)
+        sys.exit(1)
 
     config = resolve_config(args)
     columns, rows, meta = execute_query(
-        args.sql, config, timeout=args.timeout, max_rows=args.max_rows
+        sql, config, timeout=args.timeout, max_rows=args.max_rows
     )
 
     if columns:
