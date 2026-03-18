@@ -6,8 +6,24 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from lib.client import add_connection_args, resolve_config, execute_query, load_sql
+from lib.client import add_connection_args, resolve_config, execute_query
 from lib.formatter import format_output, format_duration
+
+SQL_TEMPLATE = """
+SELECT
+    ti.schema AS schemaname,
+    ti."table" AS tablename,
+    ti.size AS size_mb,
+    ti.tbl_rows AS row_count,
+    ti.unsorted,
+    ti.diststyle,
+    ti.sortkey1,
+    ti.pct_used
+FROM svv_table_info ti
+{schema_filter}
+ORDER BY ti.size DESC NULLS LAST
+LIMIT {top}
+"""
 
 
 def main():
@@ -19,8 +35,8 @@ def main():
 
     config = resolve_config(args)
 
-    schema_filter = f"WHERE info.schemaname = '{args.schema}'" if args.schema else ""
-    sql = load_sql("space_used_per_tbl", schema_filter=schema_filter)
+    schema_filter = f"WHERE ti.schema = '{args.schema}'" if args.schema else ""
+    sql = SQL_TEMPLATE.format(schema_filter=schema_filter, top=args.top)
 
     columns, rows, meta = execute_query(sql, config, timeout=args.timeout, max_rows=args.top)
     format_output(columns, rows, fmt=args.format, save_path=args.save)
