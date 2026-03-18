@@ -9,6 +9,8 @@ A Claude Code skill for exploring AWS Redshift clusters — run queries, browse 
 - **Python 3.8+** — no pip packages needed, stdlib only
 - **AWS CLI v2** — configured with a profile that has [Redshift Data API](https://docs.aws.amazon.com/redshift/latest/mgmt/data-api.html) access
 
+> **Note on the `python` command:** On macOS/Linux the command is typically `python3`. On Windows it's `python`. Throughout this README we use `python3` — substitute `python` if you're on Windows. After running setup, the skill saves your Python path to config so Claude uses the right one automatically.
+
 ## Installation
 
 ### Using the Skills CLI (recommended)
@@ -26,9 +28,17 @@ See [vercel-labs/skills](https://github.com/vercel-labs/skills) for more install
 ### Manual installation
 
 ```bash
-# Clone and symlink into your project
 git clone https://github.com/onsen-ai/redshift-skill.git
+```
+
+Then symlink or copy into your project:
+
+```bash
+# macOS / Linux
 ln -s /path/to/redshift-skill /your/project/.claude/skills/redshift
+
+# Windows (run as Administrator)
+mklink /D .claude\skills\redshift C:\path\to\redshift-skill
 ```
 
 ### First-time setup
@@ -36,11 +46,11 @@ ln -s /path/to/redshift-skill /your/project/.claude/skills/redshift
 Run the interactive setup wizard to configure your connection:
 
 ```bash
-python3 scripts/setup.py    # macOS / Linux
-python scripts/setup.py     # Windows
+python3 scripts/setup.py
 ```
 
 The wizard will:
+
 1. Check prerequisites (Python, AWS CLI)
 2. List your available AWS profiles
 3. Discover Redshift clusters
@@ -55,35 +65,35 @@ Once set up, all scripts work without connection args:
 
 ```bash
 # Run any SQL query
-python scripts/query.py "SELECT count(1) FROM my_schema.my_table"
+python3 scripts/query.py "SELECT count(1) FROM my_schema.my_table"
 
 # Explore the database
-python scripts/schemas.py
-python scripts/tables.py --schema=public
-python scripts/columns.py --schema=public --table=users
+python3 scripts/schemas.py
+python3 scripts/tables.py --schema=public
+python3 scripts/columns.py --schema=public --table=users
 
 # Generate DDL
-python scripts/ddl.py --schema=public --name=users
-python scripts/ddl.py --type=view --schema=public --name=v_active_users
-python scripts/ddl.py --type=schema --name=public
-python scripts/ddl.py --type=database
-python scripts/ddl.py --type=udf --schema=public
-python scripts/ddl.py --type=external --schema=spectrum
-python scripts/ddl.py --type=group
+python3 scripts/ddl.py --schema=public --name=users
+python3 scripts/ddl.py --type=view --schema=public --name=v_active_users
+python3 scripts/ddl.py --type=schema --name=public
+python3 scripts/ddl.py --type=database
+python3 scripts/ddl.py --type=udf --schema=public
+python3 scripts/ddl.py --type=external --schema=spectrum
+python3 scripts/ddl.py --type=group
 
 # Search for objects
-python scripts/search.py --pattern=order
-python scripts/search.py --pattern=price --type=column
+python3 scripts/search.py --pattern=order
+python3 scripts/search.py --pattern=price --type=column
 
 # Sample data
-python scripts/sample.py --schema=public --table=users --limit=5
+python3 scripts/sample.py --schema=public --table=users --limit=5
 
 # Check disk usage
-python scripts/space.py --top=20
-python scripts/space.py --schema=public
+python3 scripts/space.py --top=20
+python3 scripts/space.py --schema=public
 
 # Extended table metadata
-python scripts/table_info.py --schema=public --table=users
+python3 scripts/table_info.py --schema=public --table=users
 ```
 
 ### Output formats
@@ -91,14 +101,14 @@ python scripts/table_info.py --schema=public --table=users
 All scripts support `--format=txt|csv|json` (default: txt):
 
 ```bash
-python scripts/tables.py --schema=public --format=csv
-python scripts/tables.py --schema=public --format=json
+python3 scripts/tables.py --schema=public --format=csv
+python3 scripts/tables.py --schema=public --format=json
 ```
 
 Save directly to a file with `--save`:
 
 ```bash
-python scripts/query.py --format=csv --save=results.csv "SELECT * FROM public.users"
+python3 scripts/query.py --format=csv --save=results.csv "SELECT * FROM public.users"
 ```
 
 Results exceeding 50 rows auto-save to `~/redshift-exports/` and show the first 20 rows inline.
@@ -108,7 +118,7 @@ Results exceeding 50 rows auto-save to `~/redshift-exports/` and show the first 
 Any script accepts connection overrides:
 
 ```bash
-python scripts/query.py --profile=prod --cluster=my-cluster --database=analytics "SELECT 1"
+python3 scripts/query.py --profile=prod --cluster=my-cluster --database=analytics "SELECT 1"
 ```
 
 ## Rich metadata out of the box
@@ -117,15 +127,15 @@ The skill bundles SQL from [amazon-redshift-utils](https://github.com/awslabs/am
 
 ### DDL types
 
-| Type | Description | Example |
-|------|-------------|---------|
-| `table` | Full table DDL with distkey, sortkey, constraints, encoding | `ddl.py --schema=s --name=t` |
-| `view` | View definition | `ddl.py --type=view --schema=s --name=v` |
-| `schema` | Schema creation with authorization | `ddl.py --type=schema` |
-| `database` | Database creation with connection limits | `ddl.py --type=database` |
-| `udf` | User-defined function (SQL + Python) | `ddl.py --type=udf --schema=s` |
-| `external` | Spectrum/external table DDL | `ddl.py --type=external` |
-| `group` | User group DDL | `ddl.py --type=group` |
+| Type       | Description                                          | Example                                  |
+| ---------- | ---------------------------------------------------- | ---------------------------------------- |
+| `table`    | Full table DDL with distkey, sortkey, constraints    | `ddl.py --schema=s --name=t`             |
+| `view`     | View definition                                      | `ddl.py --type=view --schema=s --name=v` |
+| `schema`   | Schema creation with authorization                   | `ddl.py --type=schema`                   |
+| `database` | Database creation with connection limits             | `ddl.py --type=database`                 |
+| `udf`      | User-defined function (SQL + Python)                 | `ddl.py --type=udf --schema=s`           |
+| `external` | Spectrum/external table DDL                          | `ddl.py --type=external`                 |
+| `group`    | User group DDL                                       | `ddl.py --type=group`                    |
 
 ## Read-only safety
 
@@ -149,7 +159,7 @@ Config is stored at `~/.redshift-skill/config.json`:
 }
 ```
 
-Edit this file directly or re-run `python scripts/setup.py`.
+Edit this file directly or re-run `python3 scripts/setup.py`.
 
 ## License
 
