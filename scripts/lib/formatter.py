@@ -112,7 +112,7 @@ def _to_str(value):
 def format_duration(secs):
     """Format seconds into a human-readable string like '1m 23s' or '5s'."""
     if secs < 1:
-        return "<1s"
+        return f"{round(secs * 1000)}ms"
     secs = round(secs)
     if secs >= 60:
         m, s = divmod(secs, 60)
