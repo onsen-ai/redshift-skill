@@ -1,155 +1,214 @@
-# Redshift Skill for Claude Code
+# 🔴 Redshift Skill
 
-A Claude Code skill for exploring AWS Redshift clusters — run queries, browse schemas, generate DDL, check disk usage, and more.
+> **Your AI-powered data analyst for AWS Redshift.** Explore schemas, run queries, generate DDL, profile data — all read-only, all cross-platform, zero pip install.
 
-**Cross-platform** (Mac + Windows) | **Read-only** (hard guardrails) | **Zero pip install** (Python stdlib only)
+Works with **any AI coding agent** — Claude Code, Cursor, Codex, and more.
 
-## Prerequisites
+```
+🛡️ Read-only     🖥️ Mac + Windows     📦 Zero dependencies     🔌 Any AI agent
+```
 
-- **Python 3.8+** — no pip packages needed, stdlib only
-- **AWS CLI v2** — configured with a profile that has [Redshift Data API](https://docs.aws.amazon.com/redshift/latest/mgmt/data-api.html) access
+## ✨ What can it do?
 
-> **Note on the `python` command:** On macOS/Linux the command is typically `python3`. On Windows it's `python`. Throughout this README we use `python3` — substitute `python` if you're on Windows. After running setup, the skill saves your Python path to config so Claude uses the right one automatically.
+```mermaid
+mindmap
+  root((Redshift Skill))
+    🔍 Explore
+      List schemas
+      Browse tables
+      Search objects
+      View columns
+    📊 Query
+      Run SQL
+      Sample data
+      Profile columns
+      Local analytics
+    🏗️ DDL
+      Tables
+      Views
+      Schemas
+      UDFs
+      External tables
+    📈 Analyze
+      Trend analysis
+      Root cause
+      Cohort analysis
+      Top/Bottom N
+```
 
-## Installation
+## 🚀 Quick Start
 
-### Using the Skills CLI (recommended)
+### 1. Install
 
 ```bash
-# Install to your project
 npx skills add onsen-ai/redshift-skill
+```
 
-# Or install globally (available across all projects)
+Or install globally:
+
+```bash
 npx skills add onsen-ai/redshift-skill -g
 ```
 
-See [vercel-labs/skills](https://github.com/vercel-labs/skills) for more install options.
+> See [vercel-labs/skills](https://github.com/vercel-labs/skills) for more install options.
 
-### Manual installation
+### 2. Setup
 
-```bash
-git clone https://github.com/onsen-ai/redshift-skill.git
-```
-
-Then symlink or copy into your project:
+Run the interactive wizard in your terminal:
 
 ```bash
-# macOS / Linux
-ln -s /path/to/redshift-skill /your/project/.claude/skills/redshift
-
-# Windows (run as Administrator)
-mklink /D .claude\skills\redshift C:\path\to\redshift-skill
+python3 scripts/setup.py    # macOS / Linux
+python scripts/setup.py     # Windows
 ```
 
-### First-time setup
+The wizard walks you through:
 
-Run the interactive setup wizard to configure your connection:
+```mermaid
+flowchart LR
+    A[🔑 Pick AWS Profile] --> B[🔍 Discover Clusters]
+    B --> C[🗄️ Choose Database]
+    C --> D[✅ Test Connection]
+    D --> E[💾 Save Config]
+```
+
+Config is saved to `~/.redshift-skill/config.json` — re-run anytime to change settings.
+
+### 3. Go!
 
 ```bash
-python3 scripts/setup.py
+python3 scripts/query.py "SELECT count(1) FROM sales.fact_orders"
 ```
 
-The wizard will:
+That's it. All scripts auto-detect your saved connection. 🎉
 
-1. Check prerequisites (Python, AWS CLI)
-2. List your available AWS profiles
-3. Discover Redshift clusters
-4. Test connectivity with a real query
-5. Save config to `~/.redshift-skill/config.json`
+## 📖 Scripts
 
-You can re-run setup anytime to change your connection settings.
+### 🔍 Exploration
 
-## Usage
+| Script | What it does | Example |
+| ------ | ------------ | ------- |
+| `schemas.py` | List all schemas and owners | `schemas.py` |
+| `tables.py` | Browse tables with row counts & sizes | `tables.py --schema=sales` |
+| `columns.py` | Column types, encoding, dist/sort keys | `columns.py --schema=sales --table=fact_orders` |
+| `search.py` | Find tables/columns by name pattern | `search.py --pattern=revenue` |
+| `sample.py` | Peek at actual data values | `sample.py --schema=sales --table=dim_products --limit=5` |
 
-Once set up, all scripts work without connection args:
+### 📊 Querying & Analysis
+
+| Script | What it does | Example |
+| ------ | ------------ | ------- |
+| `query.py` | Run any read-only SQL | `query.py "SELECT ..."` or `query.py --sql-file=my.sql` |
+| `profile.py` | Per-column stats (nulls, cardinality, min/max) | `profile.py --schema=sales --table=dim_customers` |
+| `analyze.py` | Local analytics on saved files — **no Redshift needed** | `analyze.py data.csv --describe` |
+
+#### 🧮 analyze.py operations
 
 ```bash
-# Run any SQL query
-python3 scripts/query.py "SELECT count(1) FROM my_schema.my_table"
-
-# Explore the database
-python3 scripts/schemas.py
-python3 scripts/tables.py --schema=public
-python3 scripts/columns.py --schema=public --table=users
-
-# Generate DDL
-python3 scripts/ddl.py --schema=public --name=users
-python3 scripts/ddl.py --type=view --schema=public --name=v_active_users
-python3 scripts/ddl.py --type=schema --name=public
-python3 scripts/ddl.py --type=database
-python3 scripts/ddl.py --type=udf --schema=public
-python3 scripts/ddl.py --type=external --schema=spectrum
-python3 scripts/ddl.py --type=group
-
-# Search for objects
-python3 scripts/search.py --pattern=order
-python3 scripts/search.py --pattern=price --type=column
-
-# Sample data
-python3 scripts/sample.py --schema=public --table=users --limit=5
-
-# Check disk usage
-python3 scripts/space.py --top=20
-python3 scripts/space.py --schema=public
-
-# Extended table metadata
-python3 scripts/table_info.py --schema=public --table=users
+analyze.py data.csv --describe                        # Per-column statistics
+analyze.py data.csv --sum=revenue                     # Sum a column
+analyze.py data.csv --group-by=region --avg=sales     # Group by + aggregate
+analyze.py data.csv --filter='year=2024' --top=10     # Filter + top N
+analyze.py data.csv --hist=price                      # Text histogram
 ```
 
-### Output formats
+### 🏗️ DDL Generation
 
-All scripts support `--format=txt|csv|json` (default: txt):
+Generate `CREATE` statements for **7 object types** — full DDL with distkeys, sortkeys, encoding, constraints, and ownership:
+
+| Type | Example |
+| ---- | ------- |
+| 📋 Table | `ddl.py --schema=sales --name=fact_orders` |
+| 👁️ View | `ddl.py --type=view --schema=sales --name=v_daily_revenue` |
+| 📁 Schema | `ddl.py --type=schema --name=sales` |
+| 🗄️ Database | `ddl.py --type=database` |
+| ⚙️ UDF | `ddl.py --type=udf --schema=public` |
+| 🌐 External | `ddl.py --type=external --schema=spectrum` |
+| 👥 Group | `ddl.py --type=group` |
+
+### 📏 Metadata & Storage
+
+| Script | What it does | Example |
+| ------ | ------------ | ------- |
+| `table_info.py` | Size, rows, skew, encoding, sort key stats | `table_info.py --schema=sales --table=fact_orders` |
+| `space.py` | Largest tables by disk usage | `space.py --schema=sales --top=10` |
+
+## 🔄 Recommended Workflow
+
+```mermaid
+flowchart TD
+    A[🔍 schemas.py] -->|Pick a schema| B[📋 tables.py]
+    B -->|Check row counts & sizes| C{Large table?}
+    C -->|< 10K rows| D[📊 query.py SELECT *]
+    C -->|> 10K rows| E[🔬 columns.py + sample.py]
+    E --> F[📈 Write targeted query]
+    F --> G[💾 Results auto-saved]
+    G --> H[🧮 analyze.py locally]
+
+    style A fill:#e1f5fe
+    style B fill:#e1f5fe
+    style D fill:#c8e6c9
+    style E fill:#fff9c4
+    style F fill:#c8e6c9
+    style G fill:#f3e5f5
+    style H fill:#f3e5f5
+```
+
+> 💡 **Don't follow this rigidly!** If the user knows exactly what they want, skip straight to the query. This is a guide for unfamiliar schemas, not a mandatory checklist.
+
+## 📈 Business Analysis Patterns
+
+The skill is built for real-world analyst work — product analysts, commercial analysts, BI developers.
+
+| Pattern | Approach |
+| ------- | -------- |
+| 📊 **Trend analysis** | `GROUP BY month` + `SUM`/`COUNT`, compare YoY/MoM |
+| 👥 **Cohort analysis** | Group by first purchase date, track retention |
+| 📉 **Root cause** | Decompose metric → slice by dimensions → drill into outliers |
+| 🏆 **Top/Bottom N** | `ORDER BY metric DESC LIMIT N` |
+| 📅 **YoY comparison** | Self-join shifted by 1 year, or `LAG()` window function |
+| 🔢 **Distribution** | `NTILE(100)`, percentiles, or `analyze.py --hist` locally |
+| 🎯 **Pareto (80/20)** | Cumulative `SUM() OVER (ORDER BY ...)` |
+| 🧩 **Segmentation** | `CASE WHEN` or `NTILE` to bucket, then profile each segment |
+
+## 🛡️ Safety
+
+### Read-only guardrails
+
+Two layers of protection — the AI agent validates SQL before sending, and the script itself **hard-blocks** anything that isn't read-only:
+
+```
+✅ Allowed:  SELECT · WITH · SHOW · DESCRIBE · EXPLAIN · SET
+❌ Blocked:  CREATE · ALTER · DROP · INSERT · UPDATE · DELETE · MERGE · COPY · UNLOAD · GRANT · REVOKE
+```
+
+Multi-statement queries (`;` followed by another statement) are also blocked.
+
+### Defensive query rules
+
+| Table size | Approach |
+| ---------- | -------- |
+| < 10K rows | Explore freely, `SELECT *` is fine |
+| 10K – 1M rows | Add `WHERE` or `LIMIT` |
+| > 1M rows | Always aggregate or filter, never `SELECT *` |
+
+## 📂 Output & File Saving
+
+All results are **automatically saved** to `~/redshift-exports/`:
+
+- 📄 First 20 rows shown inline (quick preview)
+- 💾 Full results saved to file (for follow-up with `analyze.py`)
+- 📍 File path printed so the agent can read it for deeper analysis
 
 ```bash
-python3 scripts/tables.py --schema=public --format=csv
-python3 scripts/tables.py --schema=public --format=json
+--format=txt|csv|json    # Output format (default: txt)
+--save=PATH              # Save to specific location
+--no-save                # Skip auto-save
 ```
 
-Save directly to a file with `--save`:
-
-```bash
-python3 scripts/query.py --format=csv --save=results.csv "SELECT * FROM public.users"
-```
-
-Results exceeding 50 rows auto-save to `~/redshift-exports/` and show the first 20 rows inline.
-
-### Override connection settings
-
-Any script accepts connection overrides:
-
-```bash
-python3 scripts/query.py --profile=prod --cluster=my-cluster --database=analytics "SELECT 1"
-```
-
-## Rich metadata out of the box
-
-The skill bundles SQL from [amazon-redshift-utils](https://github.com/awslabs/amazon-redshift-utils) and runs it directly against system catalogs. No admin views or special setup needed on your cluster — full DDL generation (with distkeys, sortkeys, encoding, constraints), extended table metadata, and disk usage analysis work everywhere.
-
-### DDL types
-
-| Type       | Description                                          | Example                                  |
-| ---------- | ---------------------------------------------------- | ---------------------------------------- |
-| `table`    | Full table DDL with distkey, sortkey, constraints    | `ddl.py --schema=s --name=t`             |
-| `view`     | View definition                                      | `ddl.py --type=view --schema=s --name=v` |
-| `schema`   | Schema creation with authorization                   | `ddl.py --type=schema`                   |
-| `database` | Database creation with connection limits             | `ddl.py --type=database`                 |
-| `udf`      | User-defined function (SQL + Python)                 | `ddl.py --type=udf --schema=s`           |
-| `external` | Spectrum/external table DDL                          | `ddl.py --type=external`                 |
-| `group`    | User group DDL                                       | `ddl.py --type=group`                    |
-
-## Read-only safety
-
-All queries are validated before execution — both by Claude and by the script itself. Only these statement types are allowed:
-
-`SELECT` · `WITH` · `SHOW` · `DESCRIBE` · `EXPLAIN` · `SET`
-
-DDL, DML, and DCL statements are blocked at the script level. Multi-statement queries are also rejected.
-
-## Configuration
-
-Config is stored at `~/.redshift-skill/config.json`:
+## ⚙️ Configuration
 
 ```json
+// ~/.redshift-skill/config.json
 {
   "profile": "my-profile",
   "cluster": "my-cluster",
@@ -159,8 +218,15 @@ Config is stored at `~/.redshift-skill/config.json`:
 }
 ```
 
-Edit this file directly or re-run `python3 scripts/setup.py`.
+Edit directly or re-run `python3 scripts/setup.py`.
 
-## License
+## 🧰 Prerequisites
 
-SQL queries in `scripts/sql/` are derived from [amazon-redshift-utils](https://github.com/awslabs/amazon-redshift-utils) (Apache 2.0).
+- **Python 3.8+** — stdlib only, no pip packages needed
+- **AWS CLI v2** — with a profile that has [Redshift Data API](https://docs.aws.amazon.com/redshift/latest/mgmt/data-api.html) access
+
+> 💡 On macOS use `python3`, on Windows use `python`. The setup wizard saves your Python path so the agent uses the right one automatically.
+
+## 📜 License
+
+SQL in `scripts/sql/` is derived from [amazon-redshift-utils](https://github.com/awslabs/amazon-redshift-utils) (Apache 2.0).
