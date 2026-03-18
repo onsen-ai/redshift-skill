@@ -39,7 +39,7 @@ def main():
     sql = SQL_TEMPLATE.format(schema_filter=schema_filter, top=args.top)
 
     columns, rows, meta = execute_query(sql, config, timeout=args.timeout, max_rows=args.top)
-    format_output(columns, rows, fmt=args.format, save_path=args.save)
+    format_output(columns, rows, fmt=args.format, save_path=args.save, no_save=args.no_save)
     print(f"{len(rows)} tables. Duration: {format_duration(meta['duration_secs'])}", file=sys.stderr)
 
 

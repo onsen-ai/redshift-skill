@@ -1,4 +1,4 @@
-"""Shared output formatting — txt, csv, json."""
+"""Shared output formatting — txt, csv, json. Always saves results to file."""
 
 import csv
 import json
@@ -6,40 +6,49 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+EXPORT_DIR = Path.home() / "redshift-exports"
+PREVIEW_ROWS = 20
 
-def format_output(columns, rows, fmt="txt", save_path=None, stream=sys.stdout):
+
+def format_output(columns, rows, fmt="txt", save_path=None, no_save=False, stream=sys.stdout):
     """Format and output query results.
+
+    Always saves full results to ~/redshift-exports/ as CSV (unless no_save=True).
+    Shows first 20 rows inline for quick preview.
 
     Args:
         columns: list of column name strings
         rows: list of lists
         fmt: "txt", "csv", or "json"
-        save_path: optional file path to save output
+        save_path: explicit file path to save output (overrides auto-save)
+        no_save: if True, skip auto-save (just print inline)
         stream: output stream (default: stdout)
     """
     if not columns and not rows:
         print("No results.", file=sys.stderr)
         return
 
-    # Auto-save large results
-    if len(rows) > 50 and not save_path:
-        export_dir = Path.home() / "redshift-exports"
-        export_dir.mkdir(exist_ok=True)
+    # Determine save path
+    actual_save_path = save_path
+    if not actual_save_path and not no_save:
+        EXPORT_DIR.mkdir(exist_ok=True)
         ext = {"txt": "txt", "csv": "csv", "json": "json"}[fmt]
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        save_path = str(export_dir / f"query-{timestamp}.{ext}")
-        # Show first 20 rows inline, save full results
-        _write_output(columns, rows[:20], fmt, stream)
-        print(f"\n... showing 20 of {len(rows)} rows", file=sys.stderr)
-        _write_to_file(columns, rows, fmt, save_path)
-        print(f"Full results saved to: {save_path}", file=sys.stderr)
-        return
+        actual_save_path = str(EXPORT_DIR / f"query-{timestamp}.{ext}")
 
-    if save_path:
-        _write_to_file(columns, rows, fmt, save_path)
-        print(f"Saved {len(rows)} rows to: {save_path}", file=sys.stderr)
+    # Save full results to file
+    if actual_save_path:
+        _write_to_file(columns, rows, fmt, actual_save_path)
+
+    # Print inline preview
+    if len(rows) > PREVIEW_ROWS:
+        _write_output(columns, rows[:PREVIEW_ROWS], fmt, stream)
+        print(f"\n... showing {PREVIEW_ROWS} of {len(rows)} rows", file=sys.stderr)
     else:
         _write_output(columns, rows, fmt, stream)
+
+    if actual_save_path:
+        print(f"Results saved to: {actual_save_path}", file=sys.stderr)
 
 
 def _write_output(columns, rows, fmt, stream):
@@ -60,7 +69,6 @@ def _write_to_file(columns, rows, fmt, path):
 
 def _format_txt(columns, rows, stream):
     """Aligned table output."""
-    # Calculate column widths
     str_rows = [[_to_str(v) for v in row] for row in rows]
     widths = [len(c) for c in columns]
     for row in str_rows:
@@ -68,13 +76,11 @@ def _format_txt(columns, rows, stream):
             if i < len(widths):
                 widths[i] = max(widths[i], len(val))
 
-    # Header
     header = "  ".join(c.ljust(widths[i]) for i, c in enumerate(columns))
     separator = "  ".join("-" * w for w in widths)
     stream.write(header + "\n")
     stream.write(separator + "\n")
 
-    # Rows
     for row in str_rows:
         line = "  ".join(
             (row[i] if i < len(row) else "").ljust(widths[i])

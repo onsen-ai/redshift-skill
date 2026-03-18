@@ -21,7 +21,7 @@ def main():
     config = resolve_config(args)
     sql = f'SELECT * FROM "{args.schema}"."{args.table}" LIMIT {args.limit}'
     columns, rows, meta = execute_query(sql, config, timeout=args.timeout, max_rows=args.limit)
-    format_output(columns, rows, fmt=args.format, save_path=args.save)
+    format_output(columns, rows, fmt=args.format, save_path=args.save, no_save=args.no_save)
     print(f"{len(rows)} rows. Duration: {format_duration(meta['duration_secs'])}", file=sys.stderr)
 
 

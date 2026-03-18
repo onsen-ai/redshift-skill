@@ -22,7 +22,7 @@ def main():
     )
 
     if columns:
-        format_output(columns, rows, fmt=args.format, save_path=args.save)
+        format_output(columns, rows, fmt=args.format, save_path=args.save, no_save=args.no_save)
 
     print(
         f"{len(rows)} rows returned ({meta['total_rows']} total). "

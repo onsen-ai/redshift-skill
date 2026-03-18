@@ -43,6 +43,8 @@ def add_connection_args(parser):
     parser.add_argument("--max-rows", dest="max_rows", type=int, default=1000,
                         help="Max rows to fetch (default: 1000)")
     parser.add_argument("--save", help="Save output to file path")
+    parser.add_argument("--no-save", dest="no_save", action="store_true",
+                        help="Don't auto-save results to ~/redshift-exports/")
 
 
 def resolve_config(args):
