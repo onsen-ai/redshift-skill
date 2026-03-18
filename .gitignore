@@ -14,8 +14,9 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
 lib64/
+# Note: scripts/lib/ is our source code, don't ignore it
+!scripts/lib/
 parts/
 sdist/
 var/

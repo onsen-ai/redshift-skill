@@ -7,7 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from lib.client import add_connection_args, resolve_config, execute_query, load_sql
-from lib.formatter import format_output
+from lib.formatter import format_output, format_duration
 
 DDL_TYPES = {
     "table": {
@@ -110,7 +110,7 @@ def main():
     else:
         print("No DDL found for the specified object.", file=sys.stderr)
 
-    print(f"\nDuration: {meta['duration_ms']}ms", file=sys.stderr)
+    print(f"\nDuration: {format_duration(meta['duration_secs'])}", file=sys.stderr)
 
 
 if __name__ == "__main__":

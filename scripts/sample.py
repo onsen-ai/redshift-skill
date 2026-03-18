@@ -7,7 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from lib.client import add_connection_args, resolve_config, execute_query
-from lib.formatter import format_output
+from lib.formatter import format_output, format_duration
 
 
 def main():
@@ -22,7 +22,7 @@ def main():
     sql = f'SELECT * FROM "{args.schema}"."{args.table}" LIMIT {args.limit}'
     columns, rows, meta = execute_query(sql, config, timeout=args.timeout, max_rows=args.limit)
     format_output(columns, rows, fmt=args.format, save_path=args.save)
-    print(f"{len(rows)} rows. Duration: {meta['duration_ms']}ms", file=sys.stderr)
+    print(f"{len(rows)} rows. Duration: {format_duration(meta['duration_secs'])}", file=sys.stderr)
 
 
 if __name__ == "__main__":

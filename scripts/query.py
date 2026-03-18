@@ -7,7 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from lib.client import add_connection_args, resolve_config, execute_query
-from lib.formatter import format_output
+from lib.formatter import format_output, format_duration
 
 
 def main():
@@ -26,7 +26,7 @@ def main():
 
     print(
         f"{len(rows)} rows returned ({meta['total_rows']} total). "
-        f"Duration: {meta['duration_ms']}ms",
+        f"Duration: {format_duration(meta['duration_secs'])}",
         file=sys.stderr,
     )
 

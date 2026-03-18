@@ -7,7 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from lib.client import add_connection_args, resolve_config, execute_query
-from lib.formatter import format_output
+from lib.formatter import format_output, format_duration
 
 SQL = """
 SELECT nspname AS schema_name, usename AS owner
@@ -27,7 +27,7 @@ def main():
     config = resolve_config(args)
     columns, rows, meta = execute_query(SQL, config, timeout=args.timeout, max_rows=args.max_rows)
     format_output(columns, rows, fmt=args.format, save_path=args.save)
-    print(f"{len(rows)} schemas. Duration: {meta['duration_ms']}ms", file=sys.stderr)
+    print(f"{len(rows)} schemas. Duration: {format_duration(meta['duration_secs'])}", file=sys.stderr)
 
 
 if __name__ == "__main__":
