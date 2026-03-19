@@ -8,6 +8,24 @@ Works with **any AI coding agent** — Claude Code, Cursor, Codex, and more.
 🛡️ Read-only     🖥️ Mac + Windows     📦 Zero dependencies     🔌 Any AI agent
 ```
 
+## 📑 Table of Contents
+
+- [✨ What can it do?](#-what-can-it-do)
+- [🚀 Quick Start](#-quick-start)
+- [📖 Scripts](#-scripts)
+  - [🔍 Exploration](#-exploration)
+  - [📊 Querying & Analysis](#-querying--analysis)
+  - [🏗️ DDL Generation](#️-ddl-generation)
+  - [📏 Metadata & Storage](#-metadata--storage)
+- [🔄 Recommended Workflow](#-recommended-workflow)
+- [📈 Business Analysis Patterns](#-business-analysis-patterns)
+- [🛡️ Safety](#️-safety)
+- [📂 Output & File Saving](#-output--file-saving)
+- [⚙️ Configuration](#️-configuration)
+- [🧰 Prerequisites](#-prerequisites)
+- [🔐 Security & Connection](#-security--connection)
+- [📜 License](#-license)
+
 ## ✨ What can it do?
 
 ```mermaid
