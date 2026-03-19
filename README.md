@@ -227,6 +227,91 @@ Edit directly or re-run `python3 scripts/setup.py`.
 
 > 💡 On macOS use `python3`, on Windows use `python`. The setup wizard saves your Python path so the agent uses the right one automatically.
 
+## 🔐 Security & Connection
+
+### No secrets, no credentials in config
+
+The skill connects to Redshift entirely through **IAM** — your AWS CLI profile handles authentication. No database passwords, access keys, or secrets are stored anywhere. The config file (`~/.redshift-skill/config.json`) contains only connection metadata (cluster name, database, region), never credentials.
+
+### How it works
+
+```mermaid
+sequenceDiagram
+    participant Skill as Redshift Skill
+    participant CLI as AWS CLI
+    participant API as Redshift Data API
+    participant RS as Redshift Cluster
+
+    Skill->>CLI: execute-statement (--profile, --db-user)
+    CLI->>API: IAM-authenticated request
+    API->>API: Generate temporary DB credentials
+    API->>RS: Connect & execute SQL
+    RS-->>API: Results
+    API-->>CLI: Statement ID
+    Skill->>CLI: get-statement-result
+    CLI-->>Skill: Query results
+```
+
+The [Redshift Data API](https://docs.aws.amazon.com/redshift/latest/mgmt/data-api.html) generates temporary database credentials internally — you never call `GetClusterCredentials` or manage tokens yourself.
+
+### Required IAM permissions
+
+The AWS CLI profile used by the skill needs the following permissions:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "redshift-data:ExecuteStatement",
+        "redshift-data:DescribeStatement",
+        "redshift-data:GetStatementResult"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": "redshift:DescribeClusters",
+      "Resource": "*"
+    }
+  ]
+}
+```
+
+| Permission | Purpose |
+| ---------- | ------- |
+| `redshift-data:ExecuteStatement` | Submit SQL queries |
+| `redshift-data:DescribeStatement` | Poll query execution status |
+| `redshift-data:GetStatementResult` | Fetch paginated results |
+| `redshift:DescribeClusters` | Discover clusters during setup |
+
+### Restricting database user impersonation
+
+By default, the `--db-user` parameter allows the IAM principal to connect as any database user. To restrict this, scope your IAM policy with a condition:
+
+```json
+{
+  "Effect": "Allow",
+  "Action": "redshift-data:ExecuteStatement",
+  "Resource": "arn:aws:redshift:<region>:<account>:cluster:<cluster-id>",
+  "Condition": {
+    "StringEquals": {
+      "redshift:DbUser": ["analyst_readonly"]
+    }
+  }
+}
+```
+
+> 💡 For defense in depth, combine IAM restrictions with a read-only database user — the skill's application-level SQL validation is the first layer, IAM is the second, and database grants are the third.
+
+## Built by
+
+Built by the team at [Onsen](https://www.onsenapp.com) — an AI-powered mental health companion for journaling, emotional wellbeing, and personal growth.
+
 ## 📜 License
 
 SQL in `scripts/sql/` is derived from [amazon-redshift-utils](https://github.com/awslabs/amazon-redshift-utils) (Apache 2.0).
+
+MIT
