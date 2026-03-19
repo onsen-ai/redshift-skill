@@ -330,6 +330,6 @@ Built by the team at [Onsen](https://www.onsenapp.com) — an AI-powered mental 
 
 ## 📜 License
 
-SQL in `scripts/sql/` is derived from [amazon-redshift-utils](https://github.com/awslabs/amazon-redshift-utils) (Apache 2.0).
+MIT — see [LICENSE](LICENSE).
 
-MIT
+SQL in `scripts/sql/` is derived from [amazon-redshift-utils](https://github.com/awslabs/amazon-redshift-utils) (Apache 2.0).
