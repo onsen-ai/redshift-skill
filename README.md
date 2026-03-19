@@ -1,6 +1,6 @@
 # 🔴 Redshift Skill
 
-> **Your AI-powered data analyst for AWS Redshift.** Explore schemas, run queries, generate DDL, profile data — all read-only, all cross-platform, zero pip install.
+> **Your AI-powered data analyst for AWS Redshift.** Explore schemas, run queries, generate DDL, profile data — all read-only, all cross-platform, zero pip install. Works with both **provisioned clusters** and **Redshift Serverless**.
 
 Works with **any AI coding agent** — Claude Code, Cursor, Codex, and more.
 
@@ -83,10 +83,13 @@ The wizard walks you through:
 
 ```mermaid
 flowchart LR
-    A[🔑 Pick AWS Profile] --> B[🔍 Discover Clusters]
-    B --> C[🗄️ Choose Database]
-    C --> D[✅ Test Connection]
-    D --> E[💾 Save Config]
+    A[🔑 Pick AWS Profile] --> B{Provisioned or Serverless?}
+    B -->|Provisioned| C[🔍 Discover Clusters]
+    B -->|Serverless| D[🔍 Discover Workgroups]
+    C --> E[🗄️ Choose Database]
+    D --> E
+    E --> F[✅ Test Connection]
+    F --> G[💾 Save Config]
 ```
 
 Config is saved to `~/.redshift-skill/config.json` — re-run anytime to change settings.
@@ -225,6 +228,8 @@ All results are **automatically saved** to `~/redshift-exports/`:
 
 ## ⚙️ Configuration
 
+**Provisioned cluster:**
+
 ```json
 // ~/.redshift-skill/config.json
 {
@@ -236,12 +241,27 @@ All results are **automatically saved** to `~/redshift-exports/`:
 }
 ```
 
+**Serverless workgroup:**
+
+```json
+// ~/.redshift-skill/config.json
+{
+  "profile": "my-profile",
+  "workgroup": "my-workgroup",
+  "database": "my-database",
+  "region": "us-east-1"
+}
+```
+
+> Serverless doesn't need `db_user` — the Data API authenticates as your IAM identity directly.
+
 Edit directly or re-run `python3 scripts/setup.py`.
 
 ## 🧰 Prerequisites
 
 - **Python 3.8+** — stdlib only, no pip packages needed
 - **AWS CLI v2** — with a profile that has [Redshift Data API](https://docs.aws.amazon.com/redshift/latest/mgmt/data-api.html) access
+- **Redshift Data API access** — no explicit enable toggle needed, but your cluster's security group must allow inbound connections from the Data API service. For provisioned clusters, the `--db-user` must already exist in the database. For serverless, your IAM identity is used directly.
 
 > 💡 On macOS use `python3`, on Windows use `python`. The setup wizard saves your Python path so the agent uses the right one automatically.
 
@@ -258,9 +278,10 @@ sequenceDiagram
     participant Skill as Redshift Skill
     participant CLI as AWS CLI
     participant API as Redshift Data API
-    participant RS as Redshift Cluster
+    participant RS as Redshift
 
-    Skill->>CLI: execute-statement (--profile, --db-user)
+    Skill->>CLI: execute-statement (--profile)
+    Note over CLI: Provisioned: --cluster-identifier + --db-user<br/>Serverless: --workgroup-name
     CLI->>API: IAM-authenticated request
     API->>API: Generate temporary DB credentials
     API->>RS: Connect & execute SQL
@@ -275,6 +296,8 @@ The [Redshift Data API](https://docs.aws.amazon.com/redshift/latest/mgmt/data-ap
 ### Required IAM permissions
 
 The AWS CLI profile used by the skill needs the following permissions:
+
+**Provisioned clusters:**
 
 ```json
 {
@@ -298,16 +321,41 @@ The AWS CLI profile used by the skill needs the following permissions:
 }
 ```
 
-| Permission | Purpose |
-| ---------- | ------- |
-| `redshift-data:ExecuteStatement` | Submit SQL queries |
-| `redshift-data:DescribeStatement` | Poll query execution status |
-| `redshift-data:GetStatementResult` | Fetch paginated results |
-| `redshift:DescribeClusters` | Discover clusters during setup |
+**Serverless workgroups:**
 
-### Restricting database user impersonation
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "redshift-data:ExecuteStatement",
+        "redshift-data:DescribeStatement",
+        "redshift-data:GetStatementResult"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": "redshift-serverless:ListWorkgroups",
+      "Resource": "*"
+    }
+  ]
+}
+```
 
-By default, the `--db-user` parameter allows the IAM principal to connect as any database user. To restrict this, scope your IAM policy with a condition:
+| Permission | Mode | Purpose |
+| ---------- | ---- | ------- |
+| `redshift-data:ExecuteStatement` | Both | Submit SQL queries |
+| `redshift-data:DescribeStatement` | Both | Poll query execution status |
+| `redshift-data:GetStatementResult` | Both | Fetch paginated results |
+| `redshift:DescribeClusters` | Provisioned | Discover clusters during setup |
+| `redshift-serverless:ListWorkgroups` | Serverless | Discover workgroups during setup |
+
+### Restricting database user impersonation (provisioned only)
+
+With provisioned clusters, the `--db-user` parameter allows the IAM principal to connect as any database user. To restrict this, scope your IAM policy with a condition:
 
 ```json
 {
@@ -322,7 +370,9 @@ By default, the `--db-user` parameter allows the IAM principal to connect as any
 }
 ```
 
-> 💡 For defense in depth, combine IAM restrictions with a read-only database user — the skill's application-level SQL validation is the first layer, IAM is the second, and database grants are the third.
+> Serverless doesn't use `--db-user` — it authenticates as your IAM identity directly, so this condition doesn't apply.
+
+💡 For defense in depth, combine IAM restrictions with a read-only database user — the skill's application-level SQL validation is the first layer, IAM is the second, and database grants are the third.
 
 ## Built by
 

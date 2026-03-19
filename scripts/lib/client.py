@@ -33,9 +33,10 @@ def save_config(config):
 def add_connection_args(parser):
     """Add standard connection args to an argparse parser."""
     parser.add_argument("--profile", help="AWS CLI profile")
-    parser.add_argument("--cluster", help="Redshift cluster identifier")
+    parser.add_argument("--cluster", help="Redshift cluster identifier (provisioned)")
+    parser.add_argument("--workgroup", help="Redshift Serverless workgroup name")
     parser.add_argument("--database", help="Database name")
-    parser.add_argument("--db-user", dest="db_user", help="Database user")
+    parser.add_argument("--db-user", dest="db_user", help="Database user (provisioned only)")
     parser.add_argument("--format", choices=["txt", "csv", "json"], default="txt",
                         help="Output format (default: txt)")
     parser.add_argument("--timeout", type=int, default=120,
@@ -54,18 +55,34 @@ def resolve_config(args):
         config["profile"] = args.profile
     if args.cluster:
         config["cluster"] = args.cluster
+    if args.workgroup:
+        config["workgroup"] = args.workgroup
     if args.database:
         config["database"] = args.database
     if args.db_user:
         config["db_user"] = args.db_user
 
-    missing = []
-    for key in ("cluster", "database", "db_user"):
-        if not config.get(key):
-            missing.append(key)
+    # Determine connection mode: serverless (workgroup) or provisioned (cluster + db_user)
+    is_serverless = bool(config.get("workgroup"))
+    is_provisioned = bool(config.get("cluster"))
 
-    if missing:
-        print(f"ERROR: Missing connection parameters: {', '.join(missing)}", file=sys.stderr)
+    if is_serverless and is_provisioned:
+        print("ERROR: Cannot specify both --cluster and --workgroup. Use one or the other.", file=sys.stderr)
+        sys.exit(1)
+
+    if not config.get("database"):
+        print("ERROR: Missing connection parameter: database", file=sys.stderr)
+        print(f"Run setup first: python {Path(__file__).resolve().parent.parent / 'setup.py'}", file=sys.stderr)
+        sys.exit(1)
+
+    if is_serverless:
+        pass  # workgroup + database is sufficient — IAM identity is the DB user
+    elif is_provisioned:
+        if not config.get("db_user"):
+            print("ERROR: Missing connection parameter: db_user (required for provisioned clusters)", file=sys.stderr)
+            sys.exit(1)
+    else:
+        print("ERROR: Missing connection parameter: cluster or workgroup", file=sys.stderr)
         print(f"Run setup first: python {Path(__file__).resolve().parent.parent / 'setup.py'}", file=sys.stderr)
         sys.exit(1)
 
@@ -141,14 +158,15 @@ def execute_query(sql, config, timeout=120, max_rows=1000):
     """
     validate_sql(sql)
 
+    # Build execute-statement args based on connection mode
+    exec_args = ["redshift-data", "execute-statement", "--database", config["database"], "--sql", sql]
+    if config.get("workgroup"):
+        exec_args += ["--workgroup-name", config["workgroup"]]
+    else:
+        exec_args += ["--cluster-identifier", config["cluster"], "--db-user", config["db_user"]]
+
     # Execute
-    exec_result = _run_aws([
-        "redshift-data", "execute-statement",
-        "--cluster-identifier", config["cluster"],
-        "--database", config["database"],
-        "--db-user", config["db_user"],
-        "--sql", sql,
-    ], config)
+    exec_result = _run_aws(exec_args, config)
 
     stmt_id = exec_result.get("Id")
     if not stmt_id:

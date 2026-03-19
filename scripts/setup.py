@@ -95,71 +95,137 @@ def main():
         sys.exit(1)
     print()
 
-    # Step 2: Redshift Cluster
-    print("Step 2: Redshift Cluster")
-    print("  Discovering clusters...")
-    ok, out, err = run_cmd([
-        "aws", "redshift", "describe-clusters",
-        "--profile", profile, "--output", "json"
-    ])
+    # Step 2: Connection type
+    print("Step 2: Connection Type")
+    print("  1. Provisioned cluster")
+    print("  2. Serverless workgroup")
+    conn_type = prompt("Select connection type (1 or 2)", "1")
+    is_serverless = conn_type == "2"
+    print()
 
-    if ok:
-        clusters_data = json.loads(out)
-        clusters = clusters_data.get("Clusters", [])
-        if not clusters:
-            print("  No clusters found. You may need a different profile or region.")
-            cluster_id = prompt("Enter cluster identifier manually")
-            region = prompt("AWS region", "us-east-1")
-            config["region"] = region
+    if is_serverless:
+        # Serverless workgroup discovery
+        print("Step 2b: Redshift Serverless Workgroup")
+        print("  Discovering workgroups...")
+        ok, out, err = run_cmd([
+            "aws", "redshift-serverless", "list-workgroups",
+            "--profile", profile, "--output", "json"
+        ])
+
+        if ok:
+            workgroups = json.loads(out).get("workgroups", [])
+            if not workgroups:
+                print("  No workgroups found. You may need a different profile or region.")
+                workgroup_name = prompt("Enter workgroup name manually")
+                region = prompt("AWS region", "us-east-1")
+                config["region"] = region
+            else:
+                print("  Found:")
+                for i, w in enumerate(workgroups, 1):
+                    wname = w["workgroupName"]
+                    status = w.get("status", "unknown")
+                    endpoint = w.get("endpoint", {})
+                    # Extract region from endpoint address if available
+                    addr = endpoint.get("address", "")
+                    wregion = addr.split(".")[2] if addr and addr.count(".") >= 3 else "unknown"
+                    print(f"    {i}. {wname} ({status}, {wregion})")
+
+                if len(workgroups) == 1:
+                    choice = prompt("Select workgroup (number or name)", "1")
+                else:
+                    choice = prompt("Select workgroup (number or name)")
+
+                workgroup = None
+                if choice.isdigit():
+                    idx = int(choice) - 1
+                    if 0 <= idx < len(workgroups):
+                        workgroup = workgroups[idx]
+                if not workgroup:
+                    for w in workgroups:
+                        if w["workgroupName"] == choice:
+                            workgroup = w
+                            break
+                if not workgroup:
+                    print(f"  \u2717 Workgroup '{choice}' not found")
+                    workgroup_name = prompt("Enter workgroup name manually")
+                else:
+                    workgroup_name = workgroup["workgroupName"]
+                    addr = workgroup.get("endpoint", {}).get("address", "")
+                    if addr and addr.count(".") >= 3:
+                        config["region"] = addr.split(".")[2]
+                print(f"  \u2713 Selected: {workgroup_name}")
         else:
-            print("  Found:")
-            for i, c in enumerate(clusters, 1):
-                cid = c["ClusterIdentifier"]
-                status = c["ClusterStatus"]
-                endpoint = c.get("Endpoint", {})
-                region = endpoint.get("Address", "").split(".")[2] if endpoint.get("Address") else "unknown"
-                print(f"    {i}. {cid} ({status}, {region})")
+            print(f"  Warning: Could not list workgroups: {err}")
+            workgroup_name = prompt("Enter workgroup name manually")
 
-            if len(clusters) == 1:
-                choice = prompt("Select cluster (number or name)", "1")
-            else:
-                choice = prompt("Select cluster (number or name)")
-
-            # Accept both number and cluster name
-            cluster = None
-            if choice.isdigit():
-                idx = int(choice) - 1
-                if 0 <= idx < len(clusters):
-                    cluster = clusters[idx]
-            if not cluster:
-                # Try matching by name
-                for c in clusters:
-                    if c["ClusterIdentifier"] == choice:
-                        cluster = c
-                        break
-            if not cluster:
-                print(f"  \u2717 Cluster '{choice}' not found")
-                cluster_id = prompt("Enter cluster identifier manually")
-            else:
-                cluster_id = cluster["ClusterIdentifier"]
-                endpoint_addr = cluster.get("Endpoint", {}).get("Address", "")
-                if endpoint_addr:
-                    region = endpoint_addr.split(".")[2]
-                    config["region"] = region
-            print(f"  \u2713 Selected: {cluster_id}")
+        config["workgroup"] = workgroup_name
     else:
-        print(f"  Warning: Could not list clusters: {err}")
-        cluster_id = prompt("Enter cluster identifier manually")
+        # Provisioned cluster discovery
+        print("Step 2b: Redshift Cluster")
+        print("  Discovering clusters...")
+        ok, out, err = run_cmd([
+            "aws", "redshift", "describe-clusters",
+            "--profile", profile, "--output", "json"
+        ])
 
-    config["cluster"] = cluster_id
+        if ok:
+            clusters_data = json.loads(out)
+            clusters = clusters_data.get("Clusters", [])
+            if not clusters:
+                print("  No clusters found. You may need a different profile or region.")
+                cluster_id = prompt("Enter cluster identifier manually")
+                region = prompt("AWS region", "us-east-1")
+                config["region"] = region
+            else:
+                print("  Found:")
+                for i, c in enumerate(clusters, 1):
+                    cid = c["ClusterIdentifier"]
+                    status = c["ClusterStatus"]
+                    endpoint = c.get("Endpoint", {})
+                    region = endpoint.get("Address", "").split(".")[2] if endpoint.get("Address") else "unknown"
+                    print(f"    {i}. {cid} ({status}, {region})")
+
+                if len(clusters) == 1:
+                    choice = prompt("Select cluster (number or name)", "1")
+                else:
+                    choice = prompt("Select cluster (number or name)")
+
+                cluster = None
+                if choice.isdigit():
+                    idx = int(choice) - 1
+                    if 0 <= idx < len(clusters):
+                        cluster = clusters[idx]
+                if not cluster:
+                    for c in clusters:
+                        if c["ClusterIdentifier"] == choice:
+                            cluster = c
+                            break
+                if not cluster:
+                    print(f"  \u2717 Cluster '{choice}' not found")
+                    cluster_id = prompt("Enter cluster identifier manually")
+                else:
+                    cluster_id = cluster["ClusterIdentifier"]
+                    endpoint_addr = cluster.get("Endpoint", {}).get("Address", "")
+                    if endpoint_addr:
+                        region = endpoint_addr.split(".")[2]
+                        config["region"] = region
+                print(f"  \u2713 Selected: {cluster_id}")
+        else:
+            print(f"  Warning: Could not list clusters: {err}")
+            cluster_id = prompt("Enter cluster identifier manually")
+
+        config["cluster"] = cluster_id
     print()
 
     # Step 3: Database
     print("Step 3: Database")
     database = prompt("Database name", "dev")
-    db_user = prompt("Database user", "admin")
     config["database"] = database
-    config["db_user"] = db_user
+    if not is_serverless:
+        db_user = prompt("Database user", "admin")
+        config["db_user"] = db_user
+    else:
+        print("  (Serverless uses your IAM identity as the database user)")
     print()
 
     # Step 4: Test connection
@@ -167,13 +233,15 @@ def main():
     test_sql = "SELECT current_user AS connected_as, current_database() AS database_name"
     aws_args = [
         "aws", "redshift-data", "execute-statement",
-        "--cluster-identifier", config["cluster"],
         "--database", config["database"],
-        "--db-user", config["db_user"],
         "--sql", test_sql,
         "--profile", config["profile"],
         "--output", "json",
     ]
+    if is_serverless:
+        aws_args += ["--workgroup-name", config["workgroup"]]
+    else:
+        aws_args += ["--cluster-identifier", config["cluster"], "--db-user", config["db_user"]]
     if config.get("region"):
         aws_args += ["--region", config["region"]]
 
@@ -203,7 +271,8 @@ def main():
             status_data = json.loads(out)
             status = status_data.get("Status")
             if status == "FINISHED":
-                print(f"  \u2713 Connected as {config['db_user']} to {config['database']}")
+                user_label = config.get('db_user', 'IAM identity')
+                print(f"  \u2713 Connected as {user_label} to {config['database']}")
                 break
             elif status in ("FAILED", "ABORTED"):
                 print(f"  \u2717 Test query {status}: {status_data.get('Error', 'unknown')}")

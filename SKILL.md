@@ -1,11 +1,11 @@
 ---
 name: redshift
-description: Query any AWS Redshift cluster via the Data API. Use whenever the user mentions Redshift, DWH, data warehouse, SQL queries, schema exploration, table metadata, DDL generation, column listing, disk usage, data profiling, business analysis, or wants to explore database objects. Also use for local analytics on previously saved query results. Works on any Redshift cluster with no admin views required. Always use this skill for any Redshift-related task, even simple SELECT queries.
+description: Query any AWS Redshift cluster or serverless workgroup via the Data API. Use whenever the user mentions Redshift, DWH, data warehouse, SQL queries, schema exploration, table metadata, DDL generation, column listing, disk usage, data profiling, business analysis, or wants to explore database objects. Also use for local analytics on previously saved query results. Works on any Redshift cluster or serverless workgroup with no admin views required. Always use this skill for any Redshift-related task, even simple SELECT queries.
 ---
 
 # Redshift Skill
 
-Read-only Redshift exploration and business analysis via the AWS Data API. Cross-platform (Mac + Windows). Works with any AI coding agent.
+Read-only Redshift exploration and business analysis via the AWS Data API. Works with both provisioned clusters and Redshift Serverless. Cross-platform (Mac + Windows). Works with any AI coding agent.
 
 All scripts are in `${CLAUDE_SKILL_DIR}/scripts/` and require only Python 3 + AWS CLI.
 
@@ -62,9 +62,10 @@ Wait for the user to confirm setup is complete before running any queries.
 | `--no-save` | Don't auto-save to ~/redshift-exports/ |
 | `--sql-file=PATH` | Read SQL from a file (query.py only) |
 | `--profile=NAME` | Override AWS profile |
-| `--cluster=NAME` | Override cluster |
+| `--cluster=NAME` | Override cluster (provisioned) |
+| `--workgroup=NAME` | Override workgroup (serverless) |
 | `--database=NAME` | Override database |
-| `--db-user=NAME` | Override database user |
+| `--db-user=NAME` | Override database user (provisioned only) |
 | `--timeout=N` | Max wait seconds (default: 120) |
 | `--max-rows=N` | Max rows to fetch (default: 1000) |
 
