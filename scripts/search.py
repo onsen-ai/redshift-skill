@@ -40,14 +40,14 @@ def main():
         print("=== Tables ===")
         sql = TABLE_SQL.format(pattern=args.pattern)
         columns, rows, meta = execute_query(sql, config, timeout=args.timeout, max_rows=args.max_rows)
-        format_output(columns, rows, fmt=args.format, save_path=args.save)
+        format_output(columns, rows, fmt=args.format, save_fmt=args.save_format, save_path=args.save, sql=sql if args.save_sql else None)
         print(f"{len(rows)} tables found. Duration: {format_duration(meta['duration_secs'])}\n", file=sys.stderr)
 
     if args.type in ("column", "both"):
         print("=== Columns ===")
         sql = COLUMN_SQL.format(pattern=args.pattern)
         columns, rows, meta = execute_query(sql, config, timeout=args.timeout, max_rows=args.max_rows)
-        format_output(columns, rows, fmt=args.format, save_path=args.save)
+        format_output(columns, rows, fmt=args.format, save_fmt=args.save_format, save_path=args.save, sql=sql if args.save_sql else None)
         print(f"{len(rows)} columns found. Duration: {format_duration(meta['duration_secs'])}", file=sys.stderr)
 
 

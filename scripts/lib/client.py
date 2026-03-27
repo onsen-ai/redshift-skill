@@ -39,6 +39,8 @@ def add_connection_args(parser):
     parser.add_argument("--db-user", dest="db_user", help="Database user (provisioned only)")
     parser.add_argument("--format", choices=["txt", "csv", "json"], default="txt",
                         help="Output format (default: txt)")
+    parser.add_argument("--save-format", dest="save_format", choices=["txt", "csv", "json"], default="csv",
+                        help="File save format (default: csv)")
     parser.add_argument("--timeout", type=int, default=120,
                         help="Max query wait time in seconds (default: 120)")
     parser.add_argument("--max-rows", dest="max_rows", type=int, default=1000,
@@ -46,6 +48,8 @@ def add_connection_args(parser):
     parser.add_argument("--save", help="Save output to file path")
     parser.add_argument("--no-save", dest="no_save", action="store_true",
                         help="Don't auto-save results to ~/redshift-exports/")
+    parser.add_argument("--save-sql", dest="save_sql", action="store_true",
+                        help="Save the SQL query alongside results as .sql file")
 
 
 def resolve_config(args):

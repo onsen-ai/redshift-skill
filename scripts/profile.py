@@ -70,7 +70,7 @@ def main():
     profile_sql = build_profile_sql(args.schema, args.table, columns_info)
     columns, rows, meta = execute_query(profile_sql, config, timeout=300, max_rows=500)
 
-    format_output(columns, rows, fmt=args.format, save_path=args.save, no_save=args.no_save)
+    format_output(columns, rows, fmt=args.format, save_fmt=args.save_format, save_path=args.save, no_save=args.no_save, sql=profile_sql if args.save_sql else None)
     print(f"Duration: {format_duration(meta['duration_secs'])}", file=sys.stderr)
 
 

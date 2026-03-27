@@ -7,38 +7,41 @@ from datetime import datetime
 from pathlib import Path
 
 EXPORT_DIR = Path.home() / "redshift-exports"
-PREVIEW_ROWS = 20
+PREVIEW_ROWS = 200
 
 
-def format_output(columns, rows, fmt="txt", save_path=None, no_save=False, stream=sys.stdout):
+def format_output(columns, rows, fmt="txt", save_fmt=None, save_path=None, no_save=False, sql=None, stream=sys.stdout):
     """Format and output query results.
 
-    Always saves full results to ~/redshift-exports/ as CSV (unless no_save=True).
-    Shows first 20 rows inline for quick preview.
+    Terminal uses fmt (default: txt). Saved file uses save_fmt (default: csv).
+    Shows first 200 rows inline for quick preview.
 
     Args:
         columns: list of column name strings
         rows: list of lists
-        fmt: "txt", "csv", or "json"
+        fmt: terminal display format — "txt", "csv", or "json" (default: txt)
+        save_fmt: file save format — "txt", "csv", or "json" (default: csv via CLI)
         save_path: explicit file path to save output (overrides auto-save)
         no_save: if True, skip auto-save (just print inline)
+        sql: if provided, save the SQL to a matching .sql file alongside results
         stream: output stream (default: stdout)
     """
     if not columns and not rows:
         print("No results.", file=sys.stderr)
         return
 
-    # Determine save path
+    # Determine save format and path
+    actual_save_fmt = save_fmt or fmt
     actual_save_path = save_path
     if not actual_save_path and not no_save:
         EXPORT_DIR.mkdir(exist_ok=True)
-        ext = {"txt": "txt", "csv": "csv", "json": "json"}[fmt]
+        ext = {"txt": "txt", "csv": "csv", "json": "json"}[actual_save_fmt]
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         actual_save_path = str(EXPORT_DIR / f"query-{timestamp}.{ext}")
 
     # Save full results to file
     if actual_save_path:
-        _write_to_file(columns, rows, fmt, actual_save_path)
+        _write_to_file(columns, rows, actual_save_fmt, actual_save_path)
 
     # Print inline preview
     if len(rows) > PREVIEW_ROWS:
@@ -49,6 +52,10 @@ def format_output(columns, rows, fmt="txt", save_path=None, no_save=False, strea
 
     if actual_save_path:
         print(f"Results saved to: {actual_save_path}", file=sys.stderr)
+        if sql:
+            sql_path = str(Path(actual_save_path).with_suffix(".sql"))
+            Path(sql_path).write_text(sql)
+            print(f"SQL saved to: {sql_path}", file=sys.stderr)
 
 
 def _write_output(columns, rows, fmt, stream):

@@ -37,7 +37,7 @@ def main():
     )
 
     if columns:
-        format_output(columns, rows, fmt=args.format, save_path=args.save, no_save=args.no_save)
+        format_output(columns, rows, fmt=args.format, save_fmt=args.save_format, save_path=args.save, no_save=args.no_save, sql=sql if args.save_sql else None)
 
     print(
         f"{len(rows)} rows returned ({meta['total_rows']} total). "

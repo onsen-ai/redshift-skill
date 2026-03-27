@@ -106,7 +106,7 @@ def main():
                 if val is not None:
                     print(val)
         else:
-            format_output(columns, rows, fmt=args.format, save_path=args.save)
+            format_output(columns, rows, fmt=args.format, save_fmt=args.save_format, save_path=args.save, sql=sql if args.save_sql else None)
     else:
         print("No DDL found for the specified object.", file=sys.stderr)
 

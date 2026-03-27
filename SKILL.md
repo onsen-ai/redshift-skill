@@ -57,9 +57,11 @@ Wait for the user to confirm setup is complete before running any queries.
 
 | Option | Description |
 |--------|-------------|
-| `--format=txt\|csv\|json` | Output format (default: txt) |
+| `--format=txt\|csv\|json` | Terminal display format (default: txt) |
+| `--save-format=txt\|csv\|json` | File save format (default: csv) |
 | `--save=PATH` | Save to a specific file path |
 | `--no-save` | Don't auto-save to ~/redshift-exports/ |
+| `--save-sql` | Save the SQL query as a .sql file alongside results |
 | `--sql-file=PATH` | Read SQL from a file (query.py only) |
 | `--profile=NAME` | Override AWS profile |
 | `--cluster=NAME` | Override cluster (provisioned) |
@@ -71,14 +73,14 @@ Wait for the user to confirm setup is complete before running any queries.
 
 ## Output and File Saving
 
-All query results are **automatically saved** to `~/redshift-exports/query-{timestamp}.{ext}`.
-The first 20 rows are shown inline for quick preview. The saved file path is printed to stderr.
+All query results are **automatically saved** to `~/redshift-exports/query-{timestamp}.csv`.
+The terminal shows an aligned txt preview (first 200 rows). The saved file defaults to CSV for spreadsheet compatibility.
 
 This means you always have:
-- **Inline preview** (20 rows) — enough to understand the data shape and answer quick questions
-- **Full file on disk** — for deeper analysis with `analyze.py` or for the user to open in a spreadsheet
+- **Inline preview** (200 rows in txt format) — enough to understand the data shape and answer quick questions
+- **Full CSV on disk** — for deeper analysis with `analyze.py` or for the user to open in a spreadsheet
 
-Use `--no-save` to skip auto-save for trivial queries. Use `--save=PATH` to save to a specific location.
+`--format` controls terminal display (default: txt). `--save-format` controls the saved file format (default: csv). Use `--save-sql` to also save the SQL query as a matching `.sql` file. Use `--no-save` to skip auto-save. Use `--save=PATH` to save to a specific location.
 
 ---
 
@@ -125,6 +127,48 @@ For long SQL, write it to a file first and execute with `--sql-file`:
 PYTHON ${CLAUDE_SKILL_DIR}/scripts/query.py --sql-file=~/redshift-exports/my_query.sql
 ```
 
+**Tip — inline multiline SQL without reading/writing in the LLM context:** When you need to write the SQL file and run the query in one Bash call:
+
+*Mac/Linux — heredoc:*
+```bash
+cat > "/path/to/query.sql" << 'EOSQL'
+-- Your SQL here
+SELECT ...
+EOSQL
+PYTHON ${CLAUDE_SKILL_DIR}/scripts/query.py --sql-file="/path/to/query.sql" --save="/path/to/results.csv" --save-sql
+```
+The `'EOSQL'` quoting prevents shell variable expansion inside the SQL.
+
+*Cross-platform — Python:*
+```bash
+PYTHON -c "
+sql = '''
+-- Your SQL here
+SELECT ...
+'''
+open('/path/to/query.sql', 'w').write(sql.strip())
+"
+PYTHON ${CLAUDE_SKILL_DIR}/scripts/query.py --sql-file="/path/to/query.sql" --save="/path/to/results.csv" --save-sql
+```
+
+**Tip — reuse SQL files by replacing values:** When you already have a SQL file and just need to change specific values (e.g. rolling dates forward a week), use a one-liner to swap them without rewriting the whole file in the LLM context:
+
+*Mac/Linux — sed:*
+```bash
+sed "s/2026-03-15/2026-03-22/g; s/2026-03-21/2026-03-28/g" original_query.sql > query.sql
+```
+
+*Cross-platform — Python:*
+```bash
+PYTHON -c "open('query.sql','w').write(open('original_query.sql').read().replace('2026-03-15','2026-03-22').replace('2026-03-21','2026-03-28'))"
+```
+
+Then execute:
+```bash
+PYTHON ${CLAUDE_SKILL_DIR}/scripts/query.py --sql-file=query.sql --save="/path/to/results.csv" --save-sql
+```
+For templates with many replacements, named placeholders like `{{WC_START}}` can be used instead of literal dates.
+
 ### Formatting conventions
 
 ```sql
@@ -162,9 +206,83 @@ ORDER   BY region_name, month_nk
 Key formatting rules:
 - Section headers with `--` dashes above the query
 - `SELECT`, `FROM`, `JOIN`, `WHERE`, `GROUP BY`, `ORDER BY` left-aligned
+- **One column per line** — never pack multiple columns onto a single line. Each column expression gets its own line with its `AS` alias.
 - Column aliases aligned with `AS` at a consistent column position
 - Inline comments explaining non-obvious business logic
 - CTE names that describe the business concept, not the technical operation
+
+### Generous commenting
+
+Every query must include comments that explain the **why**, not just the what. Treat SQL as documentation for the next person (or the next agent) who reads it.
+
+- **Header block** at the top of every query: purpose, sources, key assumptions, parameters
+- **Section separators** (dashed `--` lines) between logical blocks (e.g. between actuals, budget, pivot CTEs)
+- **Inline comments** on non-obvious expressions (e.g. customer estimation formulas, business rules, why a filter exists)
+- **CTE-level comments** explaining what each CTE produces and why it exists as a separate step
+
+```sql
+------------------------------------------------------------------------------------------------------------------------
+-- Weekly Sales Scorecard
+-- Purpose: Core trading metrics with TY/LP/LY comparisons and BU/LV variances
+-- Source:  fact_basket_items (actuals), fact_commercial_budget_all (BU)
+-- Params:  Change the date in the periods CTE to set the reporting period
+-- Notes:
+--   - Customer estimation done per channel first, then summed to total
+--   - BU/LV only have sales and margin — derivative ratios are actuals-only
+------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------
+-- ACTUALS: per channel for correct customer estimation
+------------------------------------------------------------------------------------------------------------------------
+```
+
+### Leverage Redshift alias reuse
+
+Redshift allows referencing a column alias later in the **same SELECT**. Use this to avoid unnecessary intermediate CTEs for derived columns.
+
+**Do this** — single SELECT with alias reuse:
+```sql
+SELECT  SUM(quantity)                              AS volume,
+        COUNT(DISTINCT basket_sk)                  AS orders,
+        1.0 * volume / NULLIF(orders, 0)           AS ipb
+FROM    fact_basket_items
+```
+
+**Not this** — unnecessary extra CTE just to compute a derived column:
+```sql
+-- BAD: extra CTE only needed because standard SQL can't reuse aliases
+base AS (
+    SELECT SUM(quantity) AS volume, COUNT(DISTINCT basket_sk) AS orders
+    FROM   fact_basket_items
+)
+SELECT volume, orders, 1.0 * volume / NULLIF(orders, 0) AS ipb
+FROM   base
+```
+
+This applies to all derived columns: ratios, variances, customer estimations, margin rates, etc. If a CTE exists solely to reference aliases from a previous step, collapse it into the source SELECT.
+
+### Use `GROUP BY ALL` or positional `GROUP BY`
+
+Redshift supports `GROUP BY ALL` (groups by every non-aggregate column in SELECT) and positional `GROUP BY 1, 2, 3`. Prefer these over repeating long CASE expressions in the GROUP BY clause.
+
+**Do this:**
+```sql
+SELECT  dp.period_name,
+        f.country_sk,
+        CASE WHEN ps.composite_rnk <= 100 THEN 'Top 100 SKUs'
+             ELSE 'Other SKUs' END                              AS sku_segment,
+        SUM(f.revenue_excl_vat_all_gbp)                         AS sales
+FROM    ...
+GROUP BY ALL
+```
+
+**Not this** — repeating the CASE expression in GROUP BY:
+```sql
+GROUP BY dp.period_name, f.country_sk,
+         CASE WHEN ps.composite_rnk <= 100 THEN 'Top 100 SKUs' ELSE 'Other SKUs' END
+```
+
+Use `GROUP BY ALL` when every non-aggregate column should be grouped. Use `GROUP BY 1, 2, 3` when you need ROLLUP or GROUPING SETS on specific positions. When using ROLLUP, positional references are clearest: `GROUP BY ROLLUP(1, 2), 3`.
 
 ---
 
@@ -236,7 +354,7 @@ count
 -----
 12500000
 1 rows returned (1 total). Duration: 25ms
-Results saved to: ~/redshift-exports/query-20260318_150505.txt
+Results saved to: ~/redshift-exports/query-20260318_150505.csv
 ```
 
 ### schemas.py — List schemas
