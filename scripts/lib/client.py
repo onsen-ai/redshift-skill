@@ -16,9 +16,11 @@ SQL_DIR = Path(__file__).resolve().parent.parent / "sql"
 # --- Config ---
 
 # Config shape: {"default": NAME, "connections": {NAME: {profile, region, workgroup | cluster + db_user,
-# database}}, "python": ...}. A config from before named connections (those fields at the top level) is
-# read as one connection called "main".
-CONNECTION_FIELDS = ("profile", "region", "cluster", "workgroup", "database", "db_user")
+# database, write_mode, secret_arn?}}, "python": ...}. A config from before named connections (those
+# fields at the top level) is read as one connection called "main".
+CONNECTION_FIELDS = ("profile", "region", "cluster", "workgroup", "database", "db_user", "write_mode", "secret_arn")
+WRITE_MODES = ("reject", "accept", "ask", "auto")
+DEFAULT_WRITE_MODE = "reject"
 
 
 def load_config():
@@ -107,6 +109,12 @@ def resolve_config(args):
         config["database"] = args.database
     if args.db_user:
         config["db_user"] = args.db_user
+        config.pop("secret_arn", None)  # an explicit database user replaces the connection's secret
+
+    config.setdefault("write_mode", DEFAULT_WRITE_MODE)
+    if config["write_mode"] not in WRITE_MODES:
+        print(f"ERROR: Invalid write_mode '{config['write_mode']}'. Must be one of: {', '.join(WRITE_MODES)}", file=sys.stderr)
+        sys.exit(1)
 
     # Determine connection mode: serverless (workgroup) or provisioned (cluster + db_user)
     is_serverless = bool(config.get("workgroup"))
@@ -122,10 +130,10 @@ def resolve_config(args):
         sys.exit(1)
 
     if is_serverless:
-        pass  # workgroup + database is sufficient — IAM identity is the DB user
+        pass  # workgroup + database is sufficient — IAM identity is the DB user (or the secret's user)
     elif is_provisioned:
-        if not config.get("db_user"):
-            print("ERROR: Missing connection parameter: db_user (required for provisioned clusters)", file=sys.stderr)
+        if not config.get("db_user") and not config.get("secret_arn"):
+            print("ERROR: Missing connection parameter: db_user or secret_arn (required for provisioned clusters)", file=sys.stderr)
             sys.exit(1)
     else:
         print("ERROR: Missing connection parameter: cluster or workgroup", file=sys.stderr)
@@ -135,17 +143,21 @@ def resolve_config(args):
     return config
 
 
-# --- Read-only guard ---
+# --- Write-mode guard ---
 
-ALLOWED_KEYWORDS = {"SELECT", "WITH", "SHOW", "DESCRIBE", "EXPLAIN", "SET"}
+ALLOWED_KEYWORDS = {"SELECT", "WITH", "SHOW", "DESCRIBE", "EXPLAIN", "SET"}  # what 'reject' allows
 
-def validate_sql(sql):
-    """Validate that SQL is read-only. Raises ValueError if not."""
-    # Strip line comments
+
+def validate_sql(sql, write_mode=DEFAULT_WRITE_MODE):
+    """Validate SQL according to the connection's write_mode. Raises ValueError if not allowed.
+
+    - reject:           only read-only keywords (SELECT/WITH/SHOW/DESCRIBE/EXPLAIN/SET)
+    - accept/ask/auto:  any single statement; the agent gates writes as SKILL.md describes
+    - all modes:        no multi-statement queries (injection defence)
+    """
+    # Strip line comments, block comments, surrounding whitespace
     clean = re.sub(r"--[^\n]*", "", sql)
-    # Strip block comments
     clean = re.sub(r"/\*.*?\*/", "", clean, flags=re.DOTALL)
-    # Collapse whitespace
     clean = clean.strip()
 
     if not clean:
@@ -153,15 +165,15 @@ def validate_sql(sql):
 
     first_keyword = clean.split()[0].upper().rstrip("(")
 
-    if first_keyword not in ALLOWED_KEYWORDS:
+    if write_mode == "reject" and first_keyword not in ALLOWED_KEYWORDS:
         raise ValueError(
             f"Blocked statement type: {first_keyword}. "
-            f"Only read-only queries are allowed ({', '.join(sorted(ALLOWED_KEYWORDS))})"
+            f"The connection's write_mode is 'reject': only read-only queries are allowed "
+            f"({', '.join(sorted(ALLOWED_KEYWORDS))}). Use a connection whose write_mode is accept/ask/auto to write."
         )
 
-    # Reject multi-statement
     if re.search(r";\s*[A-Za-z]", clean):
-        raise ValueError("Multi-statement queries are not allowed")
+        raise ValueError("Multi-statement queries are not allowed (injection defence — applies in all write_modes)")
 
 
 # --- SQL loading ---
@@ -179,6 +191,22 @@ def load_sql(name, **placeholders):
 
 # --- AWS CLI execution ---
 
+def statement_args(sql, config):
+    """execute-statement arguments for the connection. With secret_arn, the Data API signs in as the
+    secret's database user (Secrets Manager, read by AWS; the skill never sees it) instead of the
+    caller's IAM identity (serverless) or db_user (provisioned)."""
+    args = ["redshift-data", "execute-statement", "--database", config["database"], "--sql", sql]
+    if config.get("workgroup"):
+        args += ["--workgroup-name", config["workgroup"]]
+    else:
+        args += ["--cluster-identifier", config["cluster"]]
+    if config.get("secret_arn"):
+        args += ["--secret-arn", config["secret_arn"]]
+    elif not config.get("workgroup"):
+        args += ["--db-user", config["db_user"]]
+    return args
+
+
 def _run_aws(args, config):
     """Run an AWS CLI command and return parsed JSON."""
     cmd = ["aws"] + args + ["--output", "json"]
@@ -195,21 +223,15 @@ def _run_aws(args, config):
 
 
 def execute_query(sql, config, timeout=120, max_rows=1000):
-    """Execute a read-only query via Redshift Data API.
+    """Execute one statement via the Redshift Data API, gated by the connection's write_mode.
 
     Returns (columns, rows, metadata) where:
       - columns: list of column name strings
       - rows: list of lists (each inner list is one row)
       - metadata: dict with 'duration_secs', 'total_rows'
     """
-    validate_sql(sql)
-
-    # Build execute-statement args based on connection mode
-    exec_args = ["redshift-data", "execute-statement", "--database", config["database"], "--sql", sql]
-    if config.get("workgroup"):
-        exec_args += ["--workgroup-name", config["workgroup"]]
-    else:
-        exec_args += ["--cluster-identifier", config["cluster"], "--db-user", config["db_user"]]
+    validate_sql(sql, write_mode=config.get("write_mode", DEFAULT_WRITE_MODE))
+    exec_args = statement_args(sql, config)
 
     # Execute
     exec_result = _run_aws(exec_args, config)
@@ -248,8 +270,8 @@ def execute_query(sql, config, timeout=120, max_rows=1000):
     total_rows = status_json.get("ResultRows", 0)
     has_results = status_json.get("HasResultSet", False)
 
-    if not has_results:
-        return [], [], {"duration_secs": duration_ns / 1_000_000_000, "total_rows": 0}
+    if not has_results:  # a write or DDL: ResultRows is the number of rows affected (-1 when not applicable)
+        return [], [], {"duration_secs": duration_ns / 1_000_000_000, "total_rows": 0, "rows_affected": total_rows}
 
     # Fetch results with pagination
     all_records = []

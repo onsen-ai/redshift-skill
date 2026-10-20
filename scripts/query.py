@@ -39,6 +39,11 @@ def main():
     if columns:
         format_output(columns, rows, fmt=args.format, save_fmt=args.save_format, save_path=args.save, no_save=args.no_save, sql=sql if args.save_sql else None)
 
+    if "rows_affected" in meta:
+        affected = meta["rows_affected"]
+        done = f"{affected} rows affected" if affected is not None and affected >= 0 else "no result set"
+        print(f"Statement done: {done}. Duration: {format_duration(meta['duration_secs'])}", file=sys.stderr)
+        return
     print(
         f"{len(rows)} rows returned ({meta['total_rows']} total). "
         f"Duration: {format_duration(meta['duration_secs'])}",

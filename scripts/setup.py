@@ -9,7 +9,7 @@ from pathlib import Path
 
 # Add parent to path for lib imports
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from lib.client import CONFIG_DIR, CONFIG_FILE, load_config, save_config, save_connection
+from lib.client import CONFIG_DIR, CONFIG_FILE, WRITE_MODES, load_config, save_config, save_connection, statement_args
 
 
 def run_cmd(cmd):
@@ -221,27 +221,31 @@ def main():
     print("Step 3: Database")
     database = prompt("Database name", "dev")
     config["database"] = database
-    if not is_serverless:
+    print("  Sign in as a Secrets Manager secret's database user instead? (e.g. an owner, for writes)")
+    secret_arn = prompt("Secret ARN (blank for none)", "")
+    if secret_arn:
+        config["secret_arn"] = secret_arn
+    elif not is_serverless:
         db_user = prompt("Database user", "admin")
         config["db_user"] = db_user
     else:
         print("  (Serverless uses your IAM identity as the database user)")
     print()
 
+    # Step 3b: Write mode
+    print("Step 3b: Write mode")
+    print("  reject = read-only (the script blocks writes) · ask = confirm every write")
+    print("  auto = confirm only high-risk writes (DROP, TRUNCATE, ...) · accept = no confirmation")
+    write_mode = ""
+    while write_mode not in WRITE_MODES:
+        write_mode = prompt(f"Write mode ({'/'.join(WRITE_MODES)})", "reject").lower()
+    config["write_mode"] = write_mode
+    print()
+
     # Step 4: Test connection
     print("Step 4: Testing connection...")
     test_sql = "SELECT current_user AS connected_as, current_database() AS database_name"
-    aws_args = [
-        "aws", "redshift-data", "execute-statement",
-        "--database", config["database"],
-        "--sql", test_sql,
-        "--profile", config["profile"],
-        "--output", "json",
-    ]
-    if is_serverless:
-        aws_args += ["--workgroup-name", config["workgroup"]]
-    else:
-        aws_args += ["--cluster-identifier", config["cluster"], "--db-user", config["db_user"]]
+    aws_args = ["aws"] + statement_args(test_sql, config) + ["--profile", config["profile"], "--output", "json"]
     if config.get("region"):
         aws_args += ["--region", config["region"]]
 
@@ -271,7 +275,7 @@ def main():
             status_data = json.loads(out)
             status = status_data.get("Status")
             if status == "FINISHED":
-                user_label = config.get('db_user', 'IAM identity')
+                user_label = "the secret's user" if config.get("secret_arn") else config.get('db_user', 'IAM identity')
                 print(f"  \u2713 Connected as {user_label} to {config['database']}")
                 break
             elif status in ("FAILED", "ABORTED"):
@@ -314,9 +318,11 @@ def manage(argv):
             print("No connections configured. Run setup.py to add one.")
         for name in sorted(conns):
             c = conns[name]
-            target = f"workgroup {c['workgroup']}" if c.get("workgroup") else f"cluster {c.get('cluster')} as {c.get('db_user')}"
+            target = f"workgroup {c['workgroup']}" if c.get("workgroup") else f"cluster {c.get('cluster')}"
+            who = "as the secret's user" if c.get("secret_arn") else (f"as {c['db_user']}" if c.get("db_user") else "as your IAM identity")
             star = " [default]" if name == config["default"] else ""
-            print(f"  {name:<20} {target}, database {c.get('database')}, profile {c.get('profile')}{star}")
+            print(f"  {name:<20} {target} {who}, database {c.get('database')}, profile {c.get('profile')}, "
+                  f"write_mode {c.get('write_mode', 'reject')}{star}")
         return True
     if argv[:1] in (["--set-default"], ["--remove"]) and len(argv) == 2:
         name = argv[1]

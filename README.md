@@ -1,11 +1,11 @@
 # 🔴 Redshift Skill
 
-> **Your AI-powered data analyst for AWS Redshift.** Explore schemas, run queries, generate DDL, profile data — all read-only, all cross-platform, zero pip install. Works with both **provisioned clusters** and **Redshift Serverless**.
+> **Your AI-powered data analyst for AWS Redshift.** Explore schemas, run queries, generate DDL, profile data — read-only by default, all cross-platform, zero pip install. Works with both **provisioned clusters** and **Redshift Serverless**.
 
 Works with **any AI coding agent** — Claude Code, Cursor, Codex, and more.
 
 ```
-🛡️ Read-only     🖥️ Mac + Windows     📦 Zero dependencies     🔌 Any AI agent
+🛡️ Read-only by default     🖥️ Mac + Windows     📦 Zero dependencies     🔌 Any AI agent
 ```
 
 ## 📑 Table of Contents
@@ -119,7 +119,7 @@ That's it. All scripts use your default connection, or the one you name with `--
 
 | Script | What it does | Example |
 | ------ | ------------ | ------- |
-| `query.py` | Run any read-only SQL | `query.py "SELECT ..."` or `query.py --sql-file=my.sql` |
+| `query.py` | Run SQL (writes only on a writable connection) | `query.py "SELECT ..."` or `query.py --sql-file=my.sql` |
 | `profile.py` | Per-column stats (nulls, cardinality, min/max) | `profile.py --schema=sales --table=dim_customers` |
 | `analyze.py` | Local analytics on saved files — **no Redshift needed** | `analyze.py data.csv --describe` |
 
@@ -194,16 +194,31 @@ The skill is built for real-world analyst work — product analysts, commercial 
 
 ## 🛡️ Safety
 
-### Read-only guardrails
+### Read-only by default, writes per connection
 
-Two layers of protection — the AI agent validates SQL before sending, and the script itself **hard-blocks** anything that isn't read-only:
+Every connection has a `write_mode`. The default, `reject`, is read-only: the script itself **hard-blocks** anything
+else before it reaches AWS.
 
 ```
-✅ Allowed:  SELECT · WITH · SHOW · DESCRIBE · EXPLAIN · SET
-❌ Blocked:  CREATE · ALTER · DROP · INSERT · UPDATE · DELETE · MERGE · COPY · UNLOAD · GRANT · REVOKE
+✅ reject allows:  SELECT · WITH · SHOW · DESCRIBE · EXPLAIN · SET
+❌ reject blocks:  CREATE · ALTER · DROP · INSERT · UPDATE · DELETE · MERGE · COPY · UNLOAD · GRANT · REVOKE · ...
 ```
 
-Multi-statement queries (`;` followed by another statement) are also blocked.
+For development, a connection can allow writes:
+
+| `write_mode` | Read | Low-risk write (INSERT, UPDATE … WHERE, CREATE …) | High-risk write (DROP, TRUNCATE, UPDATE without WHERE, UNLOAD …) |
+|---|---|---|---|
+| `reject` *(default)* | run | script blocks | script blocks |
+| `auto` | run | run | agent stops, asks you, then runs |
+| `ask` | run | agent stops, asks you, then runs | agent stops, asks you, then runs |
+| `accept` | run | run | run |
+
+Multi-statement queries (`;` followed by another statement) are blocked in **all** modes.
+
+**Two connections, one warehouse.** Keep a `reject` connection for everyday use and a writable one next to it
+(`dwh` and `dwh-rw`). On Serverless every Data API call runs as your IAM identity, so give the writable one a
+`secret_arn` — a Secrets Manager secret whose database user may write (e.g. the schema owner). AWS reads the secret;
+the skill never sees it. Needs `secretsmanager:GetSecretValue` on that secret.
 
 ### Defensive query rules
 
@@ -264,7 +279,8 @@ python3 scripts/setup.py --set-default legacy            # change the default
 python3 scripts/setup.py --remove legacy                 # remove one
 ```
 
-Without `--connection`, scripts use the default. `--profile`, `--workgroup`, `--cluster`, `--database` and
+Each connection may also set `"write_mode"` (`reject` by default — see [🛡️ Safety](#️-safety)) and `"secret_arn"` (sign in
+as that secret's database user instead of your IAM identity or `db_user`). Without `--connection`, scripts use the default. `--profile`, `--workgroup`, `--cluster`, `--database` and
 `--db-user` still override the chosen connection, and work with no config at all.
 
 **Upgrading from v1.1:** nothing to do. A config with the fields at the top level (the old shape) is read as

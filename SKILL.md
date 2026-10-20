@@ -5,7 +5,7 @@ description: Query any AWS Redshift cluster or serverless workgroup via the Data
 
 # Redshift Skill
 
-Read-only Redshift exploration and business analysis via the AWS Data API. Works with both provisioned clusters and Redshift Serverless. Cross-platform (Mac + Windows). Works with any AI coding agent.
+Redshift exploration and business analysis via the AWS Data API — read-only by default, with per-connection write modes for development. Works with both provisioned clusters and Redshift Serverless. Cross-platform (Mac + Windows). Works with any AI coding agent.
 
 All scripts are in `${CLAUDE_SKILL_DIR}/scripts/` and require only Python 3 + AWS CLI.
 
@@ -39,7 +39,9 @@ The skill supports **multiple named connections** (e.g. one per AWS account). Co
 {
   "default": "prod",
   "connections": {
-    "prod": { "profile": "...", "region": "eu-west-1", "workgroup": "...", "database": "dev" },
+    "prod": { "profile": "...", "region": "eu-west-1", "workgroup": "...", "database": "dev", "write_mode": "reject" },
+    "prod-rw": { "profile": "...", "region": "eu-west-1", "workgroup": "...", "database": "dev", "write_mode": "auto",
+                 "secret_arn": "arn:aws:secretsmanager:...:secret:owner-..." },
     "other": { "profile": "...", "region": "eu-west-1", "cluster": "...", "db_user": "...", "database": "main" }
   },
   "python": "/usr/bin/python3"
@@ -52,6 +54,7 @@ The skill supports **multiple named connections** (e.g. one per AWS account). Co
 - Remove: `PYTHON /Users/dobo/.claude/skills/redshift/scripts/setup.py --remove NAME`
 - Add: re-run `setup.py` (interactive — ask the user to run it); it asks for a name and keeps the others.
 - A config from before named connections (fields at the top level) is read as one connection, `main`.
+- `write_mode` (default `reject`) and the optional `secret_arn` are per connection — see Write-Mode Behaviour.
 
 When the user names an account, cluster or project, map it to the matching connection and pass
 `--connection NAME` on every call. Otherwise use the default and say which one you used.
@@ -60,7 +63,7 @@ When the user names an account, cluster or project, map it to the matching conne
 
 | Task | Script | When to use | Key Args |
 |------|--------|-------------|----------|
-| **Run SQL** | `query.py` | Any free-form read-only query | `"SELECT ..."` or `--sql-file=PATH` |
+| **Run SQL** | `query.py` | Any free-form query (writes only where the connection's `write_mode` allows) | `"SELECT ..."` or `--sql-file=PATH` |
 | **List schemas** | `schemas.py` | Starting point — see what schemas exist | |
 | **List tables** | `tables.py` | Browse tables, check row counts and sizes before querying | `--schema=NAME` |
 | **List columns** | `columns.py` | Understand column types, encoding, dist/sort keys | `--schema=NAME --table=NAME` |
@@ -369,7 +372,7 @@ When something looks wrong ("revenue dropped 15% last week"):
 
 ### query.py — Run SQL
 
-Run any read-only SQL query. Accepts SQL as a command-line argument or from a file.
+Run one SQL statement — read-only, or a write where the connection's `write_mode` allows it (see Write-Mode Behaviour). Accepts SQL as a command-line argument or from a file. A write prints `Statement done: N rows affected`.
 
 ```bash
 PYTHON ${CLAUDE_SKILL_DIR}/scripts/query.py "SELECT count(1) FROM sales.fact_orders"
@@ -521,19 +524,62 @@ Available operations: `--count`, `--describe`, `--sum=COL`, `--avg=COL`, `--min=
 
 ---
 
-## Read-Only Guardrails
+## Write-Mode Behaviour
 
-**Two layers of protection:**
+Each connection has a `write_mode` (`reject` / `accept` / `ask` / `auto`; missing means `reject`) that controls
+whether non-read-only SQL is allowed. Read it from the connection's config entry **before** writing or running any
+SQL — your behaviour changes per mode.
 
-1. **You must validate** — before passing any SQL to `query.py`, verify the first keyword is in the allowlist. If the user asks to run a modifying query, refuse and explain why.
+### Operation classification
 
-2. **`lib/client.py` enforces** — the script itself rejects non-allowlisted SQL before it reaches AWS. This is a hard guardrail that cannot be bypassed.
+| Class | Examples |
+|---|---|
+| **Read** | `SELECT`, `WITH`, `SHOW`, `DESCRIBE`, `EXPLAIN`, `SET` |
+| **Low-risk write** | `INSERT INTO ... VALUES`, `INSERT INTO ... SELECT`, `UPDATE ... WHERE`, `DELETE ... WHERE`, `CREATE TABLE/VIEW/SCHEMA`, `CREATE TABLE AS`, `COPY` into a new or staging table, `COMMENT ON`, `ANALYZE`, `VACUUM`, `REFRESH MATERIALIZED VIEW` |
+| **High-risk write** | `DROP`, `TRUNCATE`, `UPDATE` without `WHERE`, `DELETE` without `WHERE`, `ALTER TABLE ... DROP/RENAME`, `GRANT`, `REVOKE`, `CREATE OR REPLACE` on existing objects, `UNLOAD` (writes data outside the warehouse), `MERGE` / `COPY` into an existing production table, `CALL` |
 
-**Allowed:** `SELECT`, `WITH`, `SHOW`, `DESCRIBE`, `EXPLAIN`, `SET`
+### Behaviour matrix
 
-**Blocked:** `CREATE`, `ALTER`, `DROP`, `TRUNCATE`, `INSERT`, `UPDATE`, `DELETE`, `MERGE`, `COPY`, `UNLOAD`, `GRANT`, `REVOKE`, `CALL`, `EXECUTE`, `VACUUM`, `ANALYZE`
+| `write_mode` | Read | Low-risk write | High-risk write |
+|---|---|---|---|
+| `reject` | run | **script blocks** — refuse to even submit | **script blocks** |
+| `auto` | run | run | **stop and ask the user before submitting** |
+| `ask` | run | **stop and ask the user before submitting** | **stop and ask the user before submitting** |
+| `accept` | run | run | run (no prompt) |
 
-Multi-statement queries (`;` followed by another statement) are also blocked.
+`reject` is enforced by `lib/client.py` itself: the script refuses anything but the read keywords before it reaches
+AWS. For `ask` / `auto`, the gate is you.
+
+### How to "stop and ask"
+
+When the matrix says to ask the user **before** running the query (this happens at the agent level, not the script
+— by the time the script runs, the answer is already yes):
+
+1. Compose the SQL.
+2. Use the agent's structured-question tool if available — `AskUserQuestion` in Claude Code, equivalent prompt
+   tools in Codex / Cursor / etc. — rather than free-text Q&A.
+3. The question must show: the SQL (formatted), the connection name + database, the target objects, and a
+   blast-radius estimate (rows affected, whether reversible — Redshift has no undo for `DROP`/`TRUNCATE`, and
+   `TRUNCATE` commits immediately).
+4. Only proceed on an explicit yes. On no, abort.
+
+### Read-only and read-write connections side by side
+
+A common setup is two connections to the same warehouse: one `reject` for everyday exploration, one writable
+for development, e.g. `dwh` and `dwh-rw`. On **serverless**, the Data API signs every call in as the caller's IAM
+identity, so the two can only differ in database rights if the writable one signs in as someone else: give it a
+`secret_arn` (a Secrets Manager secret with `username`/`password`, e.g. the schema owner's). AWS reads the secret;
+the skill and you never see it. Use the read-only connection unless the task needs a write, and say which one
+you're using.
+
+### Multi-statement queries
+
+Multi-statement queries (`;` followed by another statement) are blocked **in all write modes** — an injection
+defence, not a read-only thing. Run statements one at a time.
+
+### Defensive defaults
+
+If you can't determine the write_mode (config missing, malformed), assume `reject` and only run reads.
 
 ---
 
