@@ -15,12 +15,24 @@ SQL_DIR = Path(__file__).resolve().parent.parent / "sql"
 
 # --- Config ---
 
+# Config shape: {"default": NAME, "connections": {NAME: {profile, region, workgroup | cluster + db_user,
+# database}}, "python": ...}. A config from before named connections (those fields at the top level) is
+# read as one connection called "main".
+CONNECTION_FIELDS = ("profile", "region", "cluster", "workgroup", "database", "db_user")
+
+
 def load_config():
-    """Load saved config from ~/.redshift-skill/config.json."""
+    """Load saved config from ~/.redshift-skill/config.json, in the named-connections shape."""
+    config = {}
     if CONFIG_FILE.exists():
         with open(CONFIG_FILE) as f:
-            return json.load(f)
-    return {}
+            config = json.load(f)
+    if "connections" not in config:
+        legacy = {k: config.pop(k) for k in CONNECTION_FIELDS if k in config}
+        config["connections"] = {"main": legacy} if legacy else {}
+        config["default"] = "main" if legacy else None
+    config.setdefault("default", None)
+    return config
 
 
 def save_config(config):
@@ -30,9 +42,33 @@ def save_config(config):
         json.dump(config, f, indent=2)
 
 
+def save_connection(name, conn, set_default=False):
+    """Save one connection; it becomes the default if asked, or if there is no default yet."""
+    config = load_config()
+    config["connections"][name] = conn
+    if set_default or config.get("default") not in config["connections"]:
+        config["default"] = name
+    save_config(config)
+    return config
+
+
+def get_connection(name=None):
+    """The named connection (or the default) as a flat dict of connection fields."""
+    config = load_config()
+    name = name or config.get("default")
+    conns = config["connections"]
+    if name not in conns:
+        known = ", ".join(sorted(conns)) or "none"
+        print(f"ERROR: No Redshift connection named {name!r} (configured: {known})", file=sys.stderr)
+        print(f"Run setup: python {Path(__file__).resolve().parent.parent / 'setup.py'}", file=sys.stderr)
+        sys.exit(1)
+    return dict(conns[name])
+
+
 def add_connection_args(parser):
     """Add standard connection args to an argparse parser."""
-    parser.add_argument("--profile", help="AWS CLI profile")
+    parser.add_argument("--connection", help="Named connection from ~/.redshift-skill/config.json (defaults to the saved default)")
+    parser.add_argument("--profile", help="AWS CLI profile (overrides the connection)")
     parser.add_argument("--cluster", help="Redshift cluster identifier (provisioned)")
     parser.add_argument("--workgroup", help="Redshift Serverless workgroup name")
     parser.add_argument("--database", help="Database name")
@@ -53,8 +89,14 @@ def add_connection_args(parser):
 
 
 def resolve_config(args):
-    """Merge saved config with CLI args (CLI wins)."""
-    config = load_config()
+    """The chosen connection merged with CLI args (CLI wins)."""
+    has_saved = bool(load_config()["connections"])
+    config = get_connection(args.connection) if (has_saved or args.connection) else {}
+    if args.workgroup:  # a workgroup on the command line replaces a provisioned connection, and vice versa
+        config.pop("cluster", None)
+        config.pop("db_user", None)
+    if args.cluster:
+        config.pop("workgroup", None)
     if args.profile:
         config["profile"] = args.profile
     if args.cluster:

@@ -31,6 +31,31 @@ Check if `~/.redshift-skill/config.json` exists:
 
 Wait for the user to confirm setup is complete before running any queries.
 
+## Connection Selection
+
+The skill supports **multiple named connections** (e.g. one per AWS account). Config shape:
+
+```json
+{
+  "default": "prod",
+  "connections": {
+    "prod": { "profile": "...", "region": "eu-west-1", "workgroup": "...", "database": "dev" },
+    "other": { "profile": "...", "region": "eu-west-1", "cluster": "...", "db_user": "...", "database": "main" }
+  },
+  "python": "/usr/bin/python3"
+}
+```
+
+- Every script accepts `--connection NAME`; without it, the `default` connection is used.
+- List: `PYTHON /Users/dobo/.claude/skills/redshift/scripts/setup.py --list`
+- Switch default: `PYTHON /Users/dobo/.claude/skills/redshift/scripts/setup.py --set-default NAME`
+- Remove: `PYTHON /Users/dobo/.claude/skills/redshift/scripts/setup.py --remove NAME`
+- Add: re-run `setup.py` (interactive — ask the user to run it); it asks for a name and keeps the others.
+- A config from before named connections (fields at the top level) is read as one connection, `main`.
+
+When the user names an account, cluster or project, map it to the matching connection and pass
+`--connection NAME` on every call. Otherwise use the default and say which one you used.
+
 ## Quick Reference
 
 | Task | Script | When to use | Key Args |
@@ -63,6 +88,7 @@ Wait for the user to confirm setup is complete before running any queries.
 | `--no-save` | Don't auto-save to ~/redshift-exports/ |
 | `--save-sql` | Save the SQL query as a .sql file alongside results |
 | `--sql-file=PATH` | Read SQL from a file (query.py only) |
+| `--connection=NAME` | Pick a named connection from `~/.redshift-skill/config.json` (defaults to the saved `default`) |
 | `--profile=NAME` | Override AWS profile |
 | `--cluster=NAME` | Override cluster (provisioned) |
 | `--workgroup=NAME` | Override workgroup (serverless) |

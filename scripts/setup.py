@@ -9,7 +9,7 @@ from pathlib import Path
 
 # Add parent to path for lib imports
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from lib.client import CONFIG_DIR, CONFIG_FILE, save_config
+from lib.client import CONFIG_DIR, CONFIG_FILE, load_config, save_config, save_connection
 
 
 def run_cmd(cmd):
@@ -283,20 +283,58 @@ def main():
 
     print()
 
-    # Save config
+    # Save as a named connection, next to any others
+    existing = load_config()
+    print("Step: Connection name")
+    if existing["connections"]:
+        print(f"  Existing: {', '.join(sorted(existing['connections']))} (default: {existing['default']})")
+    name = prompt("Name this connection", existing.get("default") or "main")
+    make_default = not existing["connections"] or prompt("Make it the default? (y/n)", "n").lower().startswith("y")
+    saved = save_connection(name, config, set_default=make_default)
     # Save the Python executable path so other tools know which to use
-    config["python"] = sys.executable
-    save_config(config)
-    print(f"Saved to {CONFIG_FILE}")
+    saved["python"] = sys.executable
+    save_config(saved)
+    print(f"Saved connection {name!r} to {CONFIG_FILE} (default: {saved['default']})")
 
     # Show a friendly command using python3/python rather than the full system path
     py_cmd = "python3" if "python3" in sys.executable or sys.platform == "darwin" else "python"
     scripts_dir = Path(__file__).resolve().parent
     print()
     print("Setup complete! Try:")
-    print(f"  {py_cmd} {scripts_dir / 'query.py'} \"SELECT 1\"")
+    print(f"  {py_cmd} {scripts_dir / 'query.py'} --connection {name} \"SELECT 1\"")
     print()
 
 
+def manage(argv):
+    """Non-interactive: --list, --set-default NAME, --remove NAME. Returns True when it handled argv."""
+    config = load_config()
+    conns = config["connections"]
+    if argv[:1] == ["--list"]:
+        if not conns:
+            print("No connections configured. Run setup.py to add one.")
+        for name in sorted(conns):
+            c = conns[name]
+            target = f"workgroup {c['workgroup']}" if c.get("workgroup") else f"cluster {c.get('cluster')} as {c.get('db_user')}"
+            star = " [default]" if name == config["default"] else ""
+            print(f"  {name:<20} {target}, database {c.get('database')}, profile {c.get('profile')}{star}")
+        return True
+    if argv[:1] in (["--set-default"], ["--remove"]) and len(argv) == 2:
+        name = argv[1]
+        if name not in conns:
+            print(f"No connection named {name!r} (configured: {', '.join(sorted(conns)) or 'none'})", file=sys.stderr)
+            sys.exit(1)
+        if argv[0] == "--set-default":
+            config["default"] = name
+        else:
+            del conns[name]
+            if config["default"] == name:
+                config["default"] = sorted(conns)[0] if conns else None
+        save_config(config)
+        print(f"Done. Default: {config['default']}")
+        return True
+    return False
+
+
 if __name__ == "__main__":
-    main()
+    if not manage(sys.argv[1:]):
+        main()

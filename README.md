@@ -92,7 +92,8 @@ flowchart LR
     F --> G[💾 Save Config]
 ```
 
-Config is saved to `~/.redshift-skill/config.json` — re-run anytime to change settings.
+Config is saved to `~/.redshift-skill/config.json` as a named connection — re-run to add another
+(e.g. a second account) or change one. See [⚙️ Configuration](#️-configuration).
 
 ### 3. Go!
 
@@ -100,7 +101,7 @@ Config is saved to `~/.redshift-skill/config.json` — re-run anytime to change 
 python3 scripts/query.py "SELECT count(1) FROM sales.fact_orders"
 ```
 
-That's it. All scripts auto-detect your saved connection. 🎉
+That's it. All scripts use your default connection, or the one you name with `--connection`. 🎉
 
 ## 📖 Scripts
 
@@ -228,34 +229,46 @@ All results are **automatically saved** to `~/redshift-exports/`:
 
 ## ⚙️ Configuration
 
-**Provisioned cluster:**
+Any number of **named connections** — one per account, cluster or workgroup — with a default:
 
 ```json
 // ~/.redshift-skill/config.json
 {
-  "profile": "my-profile",
-  "cluster": "my-cluster",
-  "database": "my-database",
-  "db_user": "admin",
-  "region": "us-east-1"
-}
-```
-
-**Serverless workgroup:**
-
-```json
-// ~/.redshift-skill/config.json
-{
-  "profile": "my-profile",
-  "workgroup": "my-workgroup",
-  "database": "my-database",
-  "region": "us-east-1"
+  "default": "prod",
+  "connections": {
+    "prod": {
+      "profile": "my-profile",
+      "workgroup": "my-workgroup",
+      "database": "my-database",
+      "region": "us-east-1"
+    },
+    "legacy": {
+      "profile": "other-profile",
+      "cluster": "my-cluster",
+      "database": "my-database",
+      "db_user": "admin",
+      "region": "us-east-1"
+    }
+  },
+  "python": "/usr/bin/python3"
 }
 ```
 
 > Serverless doesn't need `db_user` — the Data API authenticates as your IAM identity directly.
 
-Edit directly or re-run `python3 scripts/setup.py`.
+```bash
+python3 scripts/query.py --connection legacy "SELECT 1"   # any script: pick a connection
+python3 scripts/setup.py                                 # add one (asks for a name; keeps the others)
+python3 scripts/setup.py --list                          # list them
+python3 scripts/setup.py --set-default legacy            # change the default
+python3 scripts/setup.py --remove legacy                 # remove one
+```
+
+Without `--connection`, scripts use the default. `--profile`, `--workgroup`, `--cluster`, `--database` and
+`--db-user` still override the chosen connection, and work with no config at all.
+
+**Upgrading from v1.1:** nothing to do. A config with the fields at the top level (the old shape) is read as
+one connection called `main`; it is rewritten in the new shape only when you next run `setup.py`.
 
 ## 🧰 Prerequisites
 
